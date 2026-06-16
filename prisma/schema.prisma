@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String?
+  email         String?        @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  phoneNumber   String?
+  plan          String         @default("free")
+  emailRemindersEnabled Boolean @default(true)
+  reminderDaysBefore Int @default(3)
+  monthlySummaryEnabled Boolean @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  accounts      Account[]
+  betaRequests  BetaRequest[]
+  adminAuditLogs AdminAuditLog[] @relation("AdminAuditActor")
+  targetedAdminAuditLogs AdminAuditLog[] @relation("AdminAuditTarget")
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  feedback      Feedback[]
+  ignoredImportCandidates IgnoredImportCandidate[]
+  importFeedback ImportFeedback[]
+  cancellationRequests CancellationRequest[]
+  cancellationAuditLogs CancellationAuditLog[]
+  reminderLogs  ReminderLog[]
+  sessions      Session[]
+  subscriptions Subscription[]
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String?
+  message   String
+  rating    Int?
+  page      String?
+  reviewedAt DateTime?
+  reviewedBy String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([reviewedAt])
+  @@index([createdAt])
+}
+
+model BetaRequest {
+  id         String   @id @default(cuid())
+  name       String?
+  email      String
+  message    String?
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  reviewedAt DateTime?
+  reviewedBy String?
+  reviewer   User?    @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reviewedBy])
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  adminUserId  String
+  action       String
+  targetUserId String?
+  metadataJson String?
+  createdAt    DateTime @default(now())
+  adminUser    User     @relation("AdminAuditActor", fields: [adminUserId], references: [id], onDelete: Cascade)
+  targetUser   User?    @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([adminUserId])
+  @@index([targetUserId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model IgnoredImportCandidate {
+  id                String   @id @default(cuid())
+  userId            String
+  sourceProvider    String
+  normalizedName    String?
+  merchantName      String?
+  amount            Int?
+  sourceFingerprint String
+  reason            String?
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceFingerprint])
+  @@index([userId])
+  @@index([sourceProvider])
+  @@index([normalizedName])
+  @@index([createdAt])
+}
+
+model ImportFeedback {
+  id              String   @id @default(cuid())
+  userId          String
+  sourceProvider  String
+  merchantName    String?
+  normalizedName  String?
+  amount          Int?
+  confidenceScore Int?
+  issueType       String
+  comment         String?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sourceProvider])
+  @@index([issueType])
+  @@index([createdAt])
+}
+
+model JobRun {
+  id               String   @id @default(cuid())
+  type             String
+  status           String
+  dryRun           Boolean  @default(false)
+  triggeredByEmail String?
+  usersChecked     Int      @default(0)
+  emailsSent       Int      @default(0)
+  remindersCreated Int      @default(0)
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  refresh_token_expires_in Int?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  name        String
+  normalizedName String?
+  category    String
+  monthlyCost Int
+  status      String
+  billingInterval String @default("monthly")
+  nextPayment String
+  note        String?
+  source      String?
+  confidence  Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminderLogs ReminderLog[]
+  cancellationRequests CancellationRequest[]
+
+  @@index([userId])
+  @@index([normalizedName])
+  @@index([category])
+  @@index([status])
+  @@index([billingInterval])
+}
+
+model CancellationRequest {
+  id               String   @id @default(cuid())
+  userId           String
+  subscriptionId   String
+  status           String   @default("draft")
+  method           String   @default("email")
+  recipientEmail   String
+  customerName     String
+  customerEmail    String
+  customerNumber   String?
+  subject          String
+  body             String
+  consentConfirmed Boolean  @default(false)
+  sentAt           DateTime?
+  confirmedAt      DateTime?
+  rejectedAt       DateTime?
+  providerResponse String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription     Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  events           CancellationEvent[]
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CancellationEvent {
+  id                    String   @id @default(cuid())
+  cancellationRequestId String
+  type                  String
+  message               String
+  createdAt             DateTime @default(now())
+  cancellationRequest   CancellationRequest @relation(fields: [cancellationRequestId], references: [id], onDelete: Cascade)
+
+  @@index([cancellationRequestId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model CancellationAuditLog {
+  id                    String   @id @default(cuid())
+  userId                String
+  subscriptionId        String?
+  cancellationRequestId String?
+  action                String
+  metadataJson          String?
+  createdAt             DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([cancellationRequestId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model ReminderLog {
+  id             String   @id @default(cuid())
+  userId         String
+  subscriptionId String?
+  reminderDate   String
+  type           String
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([reminderDate])
+  @@unique([userId, subscriptionId, reminderDate, type])
+}

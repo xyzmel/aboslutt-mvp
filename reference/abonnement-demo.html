@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aboslutt – Abonnementsoversikt</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0D1B2A;
+    --red: #C8102E;
+    --red-light: #F5E6E9;
+    --white: #FFFFFF;
+    --slate: #4A5568;
+    --muted: #8896A5;
+    --bg: #F0F4F8;
+    --card: #FFFFFF;
+    --border: #E2E8F0;
+    --green: #10B981;
+    --green-light: #D1FAE5;
+    --amber: #F59E0B;
+    --amber-light: #FEF3C7;
+    --blue: #3B82F6;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--navy);
+    min-height: 100vh;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: flex; flex-direction: column; }
+
+  /* ══ SCREEN 1: LANDING ══ */
+  #screen-landing {
+    background: var(--navy);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #screen-landing::before {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,16,46,0.15) 0%, transparent 70%);
+    top: -200px; right: -200px;
+  }
+
+  .landing-inner {
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    z-index: 1;
+  }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 3rem;
+  }
+  .logo-mark {
+    width: 40px; height: 40px;
+    background: var(--red);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem;
+  }
+  .logo-text {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--white);
+    letter-spacing: -0.02em;
+  }
+  .logo-text span { color: var(--red); }
+
+  .landing-headline {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--white);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 1rem;
+  }
+  .landing-sub {
+    color: rgba(255,255,255,0.55);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 2.5rem;
+  }
+
+  .method-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .method-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    text-align: left;
+  }
+  .method-card:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.2);
+    transform: translateY(-1px);
+  }
+  .method-card.recommended {
+    background: rgba(200,16,46,0.15);
+    border-color: rgba(200,16,46,0.4);
+  }
+  .method-card.recommended:hover {
+    background: rgba(200,16,46,0.22);
+  }
+
+  .method-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .method-card.recommended .method-icon { background: rgba(200,16,46,0.3); }
+  .method-card:not(.recommended) .method-icon { background: rgba(255,255,255,0.08); }
+
+  .method-info { flex: 1; }
+  .method-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 0.2rem;
+  }
+  .method-desc { font-size: 0.8rem; color: rgba(255,255,255,0.45); }
+
+  .method-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--red);
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .landing-footer {
+    color: rgba(255,255,255,0.3);
+    font-size: 0.75rem;
+  }
+
+  /* ══ SCREEN 2: EMAIL LOGIN ══ */
+  #screen-email {
+    background: var(--navy);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .login-box {
+    background: var(--white);
+    border-radius: 20px;
+    padding: 2.5rem;
+    max-width: 400px;
+    width: 100%;
+  }
+
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-bottom: 1.5rem;
+    background: none;
+    border: none;
+    transition: color 0.2s;
+    max-width: 400px;
+    width: 100%;
+  }
+  .back-btn:hover { color: rgba(255,255,255,0.9); }
+
+  .login-icon { font-size: 2rem; margin-bottom: 1rem; }
+  .login-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.4rem; }
+  .login-sub { color: var(--slate); font-size: 0.875rem; margin-bottom: 1.75rem; line-height: 1.5; }
+
+  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--slate); margin-bottom: 0.4rem; }
+
+  .input-field {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-family: 'Inter', sans-serif;
+    color: var(--navy);
+    transition: border-color 0.2s;
+    margin-bottom: 1rem;
+    outline: none;
+  }
+  .input-field:focus { border-color: var(--navy); }
+
+  .permission-list {
+    background: #F7F9FC;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .permission-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--slate);
+    padding: 0.25rem 0;
+  }
+  .permission-item .check { color: var(--green); font-size: 0.9rem; }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--navy);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.875rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .btn-primary:hover { background: #1a2e42; }
+  .btn-primary:active { transform: scale(0.99); }
+
+  .btn-red {
+    background: var(--red);
+  }
+  .btn-red:hover { background: #a80d26; }
+
+  /* ══ SCREEN 3: SCANNING ══ */
+  #screen-scanning {
+    background: var(--navy);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .scanning-inner {
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .scan-animation {
+    width: 100px; height: 100px;
+    background: rgba(200,16,46,0.15);
+    border-radius: 50%;
+    margin: 0 auto 2rem;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .scan-animation::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--red);
+    animation: spin 1s linear infinite;
+  }
+  .scan-animation::after {
+    content: '';
+    position: absolute;
+    inset: -16px;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    border-top-color: rgba(200,16,46,0.4);
+    animation: spin 1.8s linear infinite reverse;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .scan-emoji { font-size: 2.5rem; }
+
+  .scan-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 0.5rem;
+  }
+  .scan-sub { color: rgba(255,255,255,0.5); font-size: 0.875rem; margin-bottom: 2.5rem; }
+
+  .scan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    text-align: left;
+  }
+
+  .scan-step {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    opacity: 0.35;
+    transition: all 0.4s;
+  }
+  .scan-step.done { opacity: 1; }
+  .scan-step.active { opacity: 1; }
+
+  .step-dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    transition: all 0.4s;
+  }
+  .scan-step.done .step-dot { background: var(--green); }
+  .scan-step.active .step-dot { background: var(--red); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.6;} }
+
+  .step-label { font-size: 0.85rem; color: rgba(255,255,255,0.7); }
+  .scan-step.done .step-label { color: var(--white); }
+  .scan-step.active .step-label { color: var(--white); font-weight: 500; }
+
+  /* ══ SCREEN 4: DASHBOARD ══ */
+  #screen-dashboard {
+    background: var(--bg);
+    flex-direction: column;
+  }
+
+  .dash-header {
+    background: var(--navy);
+    padding: 1.5rem 1.5rem 4rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .dash-header::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; left: 0; right: 0;
+    height: 30px;
+    background: var(--bg);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .dash-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+  .dash-logo { font-size: 1.1rem; font-weight: 800; color: white; letter-spacing: -0.02em; }
+  .dash-logo span { color: var(--red); }
+  .dash-avatar {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+    color: white;
+  }
+
+  .dash-summary {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .cost-ring {
+    position: relative;
+    width: 100px; height: 100px;
+    flex-shrink: 0;
+  }
+  .cost-ring svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 6; }
+  .ring-fill { fill: none; stroke: var(--red); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 251; stroke-dashoffset: 62; transition: stroke-dashoffset 1s ease; }
+  .ring-text {
+    position: absolute;
+    inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .ring-amount { font-size: 1.1rem; font-weight: 800; color: white; line-height: 1; }
+  .ring-label { font-size: 0.6rem; color: rgba(255,255,255,0.5); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .summary-stats { flex: 1; }
+  .stat-row { margin-bottom: 0.6rem; }
+  .stat-value { font-size: 1.4rem; font-weight: 800; color: white; line-height: 1; }
+  .stat-label { font-size: 0.75rem; color: rgba(255,255,255,0.45); }
+  .stat-row.alert .stat-value { color: var(--amber); }
+
+  .dash-content { padding: 1.25rem 1.25rem 6rem; }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .section-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .section-action { font-size: 0.8rem; color: var(--navy); font-weight: 600; cursor: pointer; }
+
+  .filter-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scrollbar-width: none;
+  }
+  .filter-tab {
+    padding: 0.4rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    border: 1.5px solid var(--border);
+    background: white;
+    color: var(--slate);
+    transition: all 0.15s;
+  }
+  .filter-tab.active {
+    background: var(--navy);
+    color: white;
+    border-color: var(--navy);
+  }
+
+  .sub-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .sub-card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border: 1.5px solid transparent;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .sub-card:hover { border-color: var(--border); transform: translateY(-1px); }
+  .sub-card.selected { border-color: var(--red); background: #fff8f9; }
+
+  .sub-card.cancelling {
+    opacity: 0;
+    transform: translateX(60px);
+    transition: all 0.4s ease;
+  }
+
+  .sub-logo {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+
+  .sub-info { flex: 1; min-width: 0; }
+  .sub-name { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.15rem; }
+  .sub-meta { font-size: 0.75rem; color: var(--muted); }
+
+  .sub-right { text-align: right; flex-shrink: 0; }
+  .sub-price { font-size: 1rem; font-weight: 700; }
+  .sub-period { font-size: 0.72rem; color: var(--muted); }
+
+  .sub-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 20px;
+    margin-top: 0.25rem;
+  }
+  .badge-active { background: var(--green-light); color: #065F46; }
+  .badge-trial { background: var(--amber-light); color: #92400E; }
+  .badge-yearly { background: #EEF2FF; color: #3730A3; }
+
+  .select-check {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    color: transparent;
+    margin-left: 0.25rem;
+  }
+  .sub-card.selected .select-check {
+    background: var(--red);
+    border-color: var(--red);
+    color: white;
+  }
+
+  /* Bottom action bar */
+  .action-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 1rem 1.25rem 2rem;
+    background: linear-gradient(to top, var(--bg) 80%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .selection-info {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--slate);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .selection-info.visible { opacity: 1; }
+
+  .btn-cancel-selected {
+    background: var(--red);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    transform: translateY(80px);
+    opacity: 0;
+  }
+  .btn-cancel-selected.visible {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  .btn-cancel-selected:hover { background: #a80d26; }
+
+  /* ══ SCREEN 5: CONFIRM ══ */
+  #screen-confirm {
+    background: var(--bg);
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .confirm-box {
+    background: white;
+    border-radius: 20px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 100%;
+  }
+
+  .confirm-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .confirm-icon { font-size: 2rem; }
+  .confirm-title { font-size: 1.2rem; font-weight: 700; }
+  .confirm-sub { font-size: 0.8rem; color: var(--slate); margin-top: 0.15rem; }
+
+  .confirm-items { margin-bottom: 1.5rem; }
+  .confirm-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .confirm-item:last-child { border-bottom: none; }
+  .confirm-item-logo {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+  }
+  .confirm-item-name { flex: 1; font-size: 0.875rem; font-weight: 500; }
+  .confirm-item-price { font-size: 0.875rem; font-weight: 600; color: var(--red); }
+
+  .confirm-savings {
+    background: var(--green-light);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+  .savings-amount { font-size: 1.5rem; font-weight: 800; color: #065F46; }
+  .savings-label { font-size: 0.8rem; color: #047857; margin-top: 0.2rem; }
+
+  .confirm-btns { display: flex; flex-direction: column; gap: 0.5rem; }
+  .btn-secondary {
+    background: var(--border);
+    color: var(--slate);
+    border: none;
+    border-radius: 10px;
+    padding: 0.8rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn-secondary:hover { background: #D1D9E0; }
+
+  /* ══ SCREEN 6: SUCCESS ══ */
+  #screen-success {
+    background: var(--navy);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .success-inner { max-width: 340px; width: 100%; }
+
+  .success-check {
+    width: 80px; height: 80px;
+    background: var(--green);
+    border-radius: 50%;
+    margin: 0 auto 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+
+  .success-title { font-size: 1.75rem; font-weight: 800; color: white; margin-bottom: 0.5rem; }
+  .success-sub { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 2rem; line-height: 1.5; }
+
+  .success-stat {
+    background: rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .success-stat-amount { font-size: 2rem; font-weight: 800; color: var(--green); }
+  .success-stat-label { font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-top: 0.2rem; }
+
+  /* ── UTILITIES ── */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+  @media (min-width: 480px) {
+    .dash-header { padding: 1.5rem 2rem 4rem; }
+    .dash-content { padding: 1.5rem 2rem 6rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1: LANDING
+══════════════════════════════════════════ -->
+<div id="screen-landing" class="screen active">
+  <div class="landing-inner">
+    <div class="logo">
+      <div class="logo-mark">✂️</div>
+      <div class="logo-text">Abo<span>slutt</span></div>
+    </div>
+
+    <h1 class="landing-headline">Se hva du betaler for – og kutt det du ikke trenger.</h1>
+    <p class="landing-sub">Finn alle abonnementene dine på under ett minutt. Ingen kortdetaljer nødvendig.</p>
+
+    <div class="method-cards">
+      <div class="method-card recommended" onclick="goTo('screen-email')">
+        <div class="method-icon">📧</div>
+        <div class="method-info">
+          <div class="method-title">Koble til e-post</div>
+          <div class="method-desc">Vi finner betalingskvitteringer automatisk</div>
+        </div>
+        <div class="method-badge">Anbefalt</div>
+      </div>
+
+      <div class="method-card" onclick="goTo('screen-email', 'vipps')">
+        <div class="method-icon">🔵</div>
+        <div class="method-info">
+          <div class="method-title">Logg inn med Vipps</div>
+          <div class="method-desc">Hent transaksjoner direkte fra Vipps</div>
+        </div>
+      </div>
+
+      <div class="method-card" onclick="goTo('screen-email', 'bankid')">
+        <div class="method-icon">🏦</div>
+        <div class="method-info">
+          <div class="method-title">BankID & nettbank</div>
+          <div class="method-desc">Koble til banken din via BankID</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="landing-footer">🔒 Kun lesetilgang · Vi lagrer aldri passord · Slett data når som helst</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 2: EMAIL LOGIN
+══════════════════════════════════════════ -->
+<div id="screen-email" class="screen">
+  <button class="back-btn" onclick="goTo('screen-landing')" style="max-width:400px;margin:1.5rem auto 0;">
+    ← Tilbake
+  </button>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 1.5rem 2rem;">
+    <div class="login-box">
+      <div class="login-icon">📬</div>
+      <div class="login-title">Koble til e-post</div>
+      <div class="login-sub">Vi søker gjennom kvitteringer og betalingsbekreftelser for å finne aktive abonnementer automatisk.</div>
+
+      <label>E-postadresse</label>
+      <input type="email" class="input-field" id="emailInput" placeholder="navn@gmail.com" value="kari.nordmann@gmail.com">
+
+      <div class="permission-list">
+        <div class="permission-item"><span class="check">✓</span> Kun lesetilgang til e-post</div>
+        <div class="permission-item"><span class="check">✓</span> Vi lagrer aldri e-postinnhold</div>
+        <div class="permission-item"><span class="check">✓</span> Koblingen kan fjernes når som helst</div>
+      </div>
+
+      <button class="btn-primary" onclick="startScanning()">Koble til og søk →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 3: SCANNING
+══════════════════════════════════════════ -->
+<div id="screen-scanning" class="screen">
+  <div class="scanning-inner" style="margin:auto;">
+    <div class="scan-animation">
+      <div class="scan-emoji">🔍</div>
+    </div>
+    <div class="scan-title">Søker gjennom e-post...</div>
+    <div class="scan-sub">Dette tar vanligvis under 30 sekunder</div>
+
+    <div class="scan-steps">
+      <div class="scan-step active" id="step1">
+        <div class="step-dot">1</div>
+        <div class="step-label">Kobler til Gmail...</div>
+      </div>
+      <div class="scan-step" id="step2">
+        <div class="step-dot">2</div>
+        <div class="step-label">Søker etter betalingskvitteringer</div>
+      </div>
+      <div class="scan-step" id="step3">
+        <div class="step-dot">3</div>
+        <div class="step-label">Identifiserer abonnementer</div>
+      </div>
+      <div class="scan-step" id="step4">
+        <div class="step-dot">4</div>
+        <div class="step-label">Beregner månedlig kostnad</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 4: DASHBOARD
+══════════════════════════════════════════ -->
+<div id="screen-dashboard" class="screen">
+  <div class="dash-header">
+    <div class="dash-topbar">
+      <div class="dash-logo">Abo<span>slutt</span></div>
+      <div class="dash-avatar">KN</div>
+    </div>
+
+    <div class="dash-summary">
+      <div class="cost-ring">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="40"/>
+          <circle class="ring-fill" cx="50" cy="50" r="40"/>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-amount" id="totalAmount">1 247</div>
+          <div class="ring-label">kr/mnd</div>
+        </div>
+      </div>
+
+      <div class="summary-stats">
+        <div class="stat-row">
+          <div class="stat-value" id="subCount">8</div>
+          <div class="stat-label">aktive abonnementer</div>
+        </div>
+        <div class="stat-row alert">
+          <div class="stat-value">2</div>
+          <div class="stat-label">prøveperioder utløper snart</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-content">
+    <div class="section-header">
+      <div class="section-title">Dine abonnementer</div>
+      <div class="section-action" onclick="selectAll()">Velg alle</div>
+    </div>
+
+    <div class="filter-tabs">
+      <div class="filter-tab active" onclick="filterSubs('all', this)">Alle (8)</div>
+      <div class="filter-tab" onclick="filterSubs('streaming', this)">Strømming</div>
+      <div class="filter-tab" onclick="filterSubs('software', this)">Software</div>
+      <div class="filter-tab" onclick="filterSubs('health', this)">Helse & Trening</div>
+      <div class="filter-tab" onclick="filterSubs('news', this)">Nyheter</div>
+    </div>
+
+    <div class="sub-list" id="subList">
+      <!-- Cards injected by JS -->
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <div class="selection-info" id="selectionInfo"></div>
+    <button class="btn-cancel-selected" id="cancelBtn" onclick="goToConfirm()">
+      Avslutt valgte abonnementer →
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 5: CONFIRM CANCELLATION
+══════════════════════════════════════════ -->
+<div id="screen-confirm" class="screen">
+  <div class="confirm-box">
+    <div class="confirm-header">
+      <div class="confirm-icon">⚠️</div>
+      <div>
+        <div class="confirm-title">Bekreft avslutning</div>
+        <div class="confirm-sub">Du er i ferd med å avslutte disse abonnementene</div>
+      </div>
+    </div>
+
+    <div class="confirm-items" id="confirmItems"></div>
+
+    <div class="confirm-savings">
+      <div class="savings-amount" id="savingsAmount">– kr/mnd</div>
+      <div class="savings-label">månedlig besparelse</div>
+    </div>
+
+    <div class="confirm-btns">
+      <button class="btn-primary btn-red" onclick="confirmCancel()">Ja, avslutt alle →</button>
+      <button class="btn-secondary" onclick="goTo('screen-dashboard')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 6: SUCCESS
+══════════════════════════════════════════ -->
+<div id="screen-success" class="screen">
+  <div class="success-inner">
+    <div class="success-check">✓</div>
+    <h2 class="success-title">Alt avsluttet!</h2>
+    <p class="success-sub">Avslutningene er sendt til tjenestene. Du mottar bekreftelse på e-post innen 24 timer.</p>
+
+    <div class="success-stat">
+      <div class="success-stat-amount" id="successSaving">–</div>
+      <div class="success-stat-label">spart per måned · <span id="successYearly">–</span> per år</div>
+    </div>
+
+    <button class="btn-primary" style="margin-top:1.5rem;" onclick="goTo('screen-dashboard')">Tilbake til oversikt</button>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const subscriptions = [
+  { id:1, name:'Netflix', category:'streaming', logo:'🎬', color:'#E50914', colorBg:'#FFF0F0', price:169, period:'mnd', badge:'active', nextDate:'15. jul' },
+  { id:2, name:'Spotify', category:'streaming', logo:'🎵', color:'#1DB954', colorBg:'#F0FBF4', price:129, period:'mnd', badge:'active', nextDate:'3. jul' },
+  { id:3, name:'Adobe CC', category:'software', logo:'🎨', color:'#FF0000', colorBg:'#FFF0F0', price:599, period:'mnd', badge:'active', nextDate:'28. jun' },
+  { id:4, name:'Duolingo Plus', category:'software', logo:'🦉', color:'#78C008', colorBg:'#F4FAE8', price:79, period:'mnd', badge:'trial', nextDate:'18. jun · prøveperiode' },
+  { id:5, name:'Aftenposten', category:'news', logo:'📰', color:'#003366', colorBg:'#EEF3FA', price:199, period:'mnd', badge:'active', nextDate:'1. jul' },
+  { id:6, name:'SATS', category:'health', logo:'💪', color:'#FF6B00', colorBg:'#FFF4EC', price:399, period:'mnd', badge:'yearly', nextDate:'Jan 2025' },
+  { id:7, name:'iCloud+', category:'software', logo:'☁️', color:'#007AFF', colorBg:'#EEF5FF', price:29, period:'mnd', badge:'active', nextDate:'7. jul' },
+  { id:8, name:'Disney+', category:'streaming', logo:'✨', color:'#113CCF', colorBg:'#EEF1FB', price:109, period:'mnd', badge:'trial', nextDate:'21. jun · prøveperiode' },
+];
+
+let selected = new Set();
+let visibleSubs = [...subscriptions];
+let cancelledIds = new Set();
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function goTo(id, variant) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+// ── SCANNING ANIMATION ────────────────────────────────────────────────────────
+function startScanning() {
+  goTo('screen-scanning');
+  const steps = [
+    { id: 'step1', delay: 600 },
+    { id: 'step2', delay: 1400 },
+    { id: 'step3', delay: 2400 },
+    { id: 'step4', delay: 3200 },
+  ];
+
+  // Activate step 1 immediately
+  const s1 = document.getElementById('step1');
+  s1.classList.add('active');
+
+  steps.forEach((s, i) => {
+    setTimeout(() => {
+      const el = document.getElementById(s.id);
+      el.classList.remove('active');
+      el.classList.add('done');
+      el.querySelector('.step-dot').textContent = '✓';
+
+      if (steps[i+1]) {
+        const next = document.getElementById(steps[i+1].id);
+        next.classList.add('active');
+      }
+    }, s.delay);
+  });
+
+  setTimeout(() => {
+    renderDashboard();
+    goTo('screen-dashboard');
+  }, 4000);
+}
+
+// ── RENDER DASHBOARD ──────────────────────────────────────────────────────────
+function renderDashboard() {
+  const list = document.getElementById('subList');
+  const active = subscriptions.filter(s => !cancelledIds.has(s.id));
+  visibleSubs = active;
+
+  list.innerHTML = active.map(sub => `
+    <div class="sub-card ${selected.has(sub.id) ? 'selected' : ''}"
+         id="card-${sub.id}"
+         onclick="toggleSelect(${sub.id})">
+      <div class="sub-logo" style="background:${sub.colorBg};">${sub.logo}</div>
+      <div class="sub-info">
+        <div class="sub-name">${sub.name}</div>
+        <div class="sub-meta">Neste betaling: ${sub.nextDate}</div>
+        <span class="sub-badge ${sub.badge === 'active' ? 'badge-active' : sub.badge === 'trial' ? 'badge-trial' : 'badge-yearly'}">
+          ${sub.badge === 'active' ? '● Aktiv' : sub.badge === 'trial' ? '⚠ Prøveperiode' : '📅 Årlig'}
+        </span>
+      </div>
+      <div class="sub-right">
+        <div class="sub-price">${sub.price}kr</div>
+        <div class="sub-period">/${sub.period}</div>
+      </div>
+      <div class="select-check">✓</div>
+    </div>
+  `).join('');
+
+  updateTotals(active);
+  updateActionBar();
+}
+
+function updateTotals(subs) {
+  const total = subs.reduce((sum, s) => sum + s.price, 0);
+  document.getElementById('totalAmount').textContent = total.toLocaleString('no');
+  document.getElementById('subCount').textContent = subs.length;
+}
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────
+function toggleSelect(id) {
+  if (selected.has(id)) {
+    selected.delete(id);
+    document.getElementById(`card-${id}`).classList.remove('selected');
+  } else {
+    selected.add(id);
+    document.getElementById(`card-${id}`).classList.add('selected');
+  }
+  updateActionBar();
+}
+
+function selectAll() {
+  const active = subscriptions.filter(s => !cancelledIds.has(s.id));
+  if (selected.size === active.length) {
+    selected.clear();
+    document.querySelectorAll('.sub-card').forEach(c => c.classList.remove('selected'));
+  } else {
+    active.forEach(s => selected.add(s.id));
+    document.querySelectorAll('.sub-card').forEach(c => c.classList.add('selected'));
+  }
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const btn = document.getElementById('cancelBtn');
+  const info = document.getElementById('selectionInfo');
+  if (selected.size > 0) {
+    const total = [...selected].reduce((sum, id) => {
+      const sub = subscriptions.find(s => s.id === id);
+      return sum + (sub ? sub.price : 0);
+    }, 0);
+    btn.classList.add('visible');
+    info.classList.add('visible');
+    info.textContent = `${selected.size} valgt · ${total}kr/mnd å spare`;
+  } else {
+    btn.classList.remove('visible');
+    info.classList.remove('visible');
+  }
+}
+
+function filterSubs(cat, el) {
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+
+  const active = subscriptions.filter(s => !cancelledIds.has(s.id));
+  const filtered = cat === 'all' ? active : active.filter(s => s.category === cat);
+  const list = document.getElementById('subList');
+
+  list.innerHTML = filtered.map(sub => `
+    <div class="sub-card ${selected.has(sub.id) ? 'selected' : ''}"
+         id="card-${sub.id}"
+         onclick="toggleSelect(${sub.id})">
+      <div class="sub-logo" style="background:${sub.colorBg};">${sub.logo}</div>
+      <div class="sub-info">
+        <div class="sub-name">${sub.name}</div>
+        <div class="sub-meta">Neste betaling: ${sub.nextDate}</div>
+        <span class="sub-badge ${sub.badge === 'active' ? 'badge-active' : sub.badge === 'trial' ? 'badge-trial' : 'badge-yearly'}">
+          ${sub.badge === 'active' ? '● Aktiv' : sub.badge === 'trial' ? '⚠ Prøveperiode' : '📅 Årlig'}
+        </span>
+      </div>
+      <div class="sub-right">
+        <div class="sub-price">${sub.price}kr</div>
+        <div class="sub-period">/${sub.period}</div>
+      </div>
+      <div class="select-check">✓</div>
+    </div>
+  `).join('');
+}
+
+// ── CONFIRM ───────────────────────────────────────────────────────────────────
+function goToConfirm() {
+  const selectedSubs = subscriptions.filter(s => selected.has(s.id));
+  const total = selectedSubs.reduce((sum, s) => sum + s.price, 0);
+
+  document.getElementById('confirmItems').innerHTML = selectedSubs.map(sub => `
+    <div class="confirm-item">
+      <div class="confirm-item-logo" style="background:${sub.colorBg};">${sub.logo}</div>
+      <div class="confirm-item-name">${sub.name}</div>
+      <div class="confirm-item-price">${sub.price}kr/mnd</div>
+    </div>
+  `).join('');
+
+  document.getElementById('savingsAmount').textContent = `${total} kr/mnd`;
+  goTo('screen-confirm');
+}
+
+function confirmCancel() {
+  const selectedSubs = subscriptions.filter(s => selected.has(s.id));
+  const total = selectedSubs.reduce((sum, s) => sum + s.price, 0);
+
+  // Mark as cancelled
+  selected.forEach(id => cancelledIds.add(id));
+  selected.clear();
+
+  document.getElementById('successSaving').textContent = `${total} kr/mnd`;
+  document.getElementById('successYearly').textContent = `${(total * 12).toLocaleString('no')} kr`;
+
+  goTo('screen-success');
+  renderDashboard();
+}
+</script>
+</body>
+</html>
