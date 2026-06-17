@@ -32,6 +32,7 @@ model User {
   importFeedback ImportFeedback[]
   cancellationRequests CancellationRequest[]
   cancellationAuditLogs CancellationAuditLog[]
+  billingAgreements BillingAgreement[]
   reminderLogs  ReminderLog[]
   sessions      Session[]
   subscriptions Subscription[]
@@ -140,6 +141,47 @@ model JobRun {
 
   @@index([type])
   @@index([createdAt])
+}
+
+model BillingAgreement {
+  id                  String   @id @default(cuid())
+  userId              String
+  provider            String   @default("vipps")
+  providerAgreementId String?  @unique
+  providerChargeId    String?
+  reference           String   @unique
+  plan                String
+  status              String
+  priceNok            Int
+  interval            String
+  currency            String   @default("NOK")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  activatedAt         DateTime?
+  cancelledAt         DateTime?
+  expiresAt           DateTime?
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model BillingEvent {
+  id                  String   @id @default(cuid())
+  provider            String   @default("vipps")
+  eventType           String
+  providerEventId     String?
+  providerAgreementId String?
+  providerChargeId    String?
+  reference           String?
+  rawJson             Json
+  createdAt           DateTime @default(now())
+
+  @@index([eventType])
+  @@index([reference])
+  @@index([providerAgreementId])
+  @@index([providerChargeId])
+  @@index([providerEventId])
 }
 
 model Account {
