@@ -56,11 +56,11 @@ export function AppHeader({ adminSection = false, maxWidthClassName = "max-w-6xl
   const links = useMemo(() => buildAppLinks(pathname, adminSection), [adminSection, pathname]);
 
   return (
-    <header className="sticky top-0 z-40 bg-[#0D1B2A] px-5 py-4 text-white shadow-sm shadow-black/10">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0D1B2A]/96 px-4 py-3 text-white shadow-sm shadow-black/10 backdrop-blur sm:px-5">
       <div className={`mx-auto flex ${maxWidthClassName} items-center justify-between gap-4`}>
         <Logo href={adminSection ? "/admin" : "/dashboard"} suffix={adminSection ? "Admin" : undefined} />
 
-        <nav className="hidden items-center gap-1 text-sm font-semibold md:flex">
+        <nav className="hidden items-center gap-1 rounded-2xl bg-white/[0.04] p-1 text-sm font-semibold ring-1 ring-white/10 md:flex">
           {links.map((link) => (
             <NavLink key={`${link.href}-${link.label}`} link={link} />
           ))}
@@ -68,7 +68,7 @@ export function AppHeader({ adminSection = false, maxWidthClassName = "max-w-6xl
 
         <div className="flex items-center gap-2">
           {status === "loading" ? (
-            <span className="hidden rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white/70 sm:inline">
+              <span className="hidden rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white/70 sm:inline">
               Henter bruker...
             </span>
           ) : user ? (
@@ -77,10 +77,10 @@ export function AppHeader({ adminSection = false, maxWidthClassName = "max-w-6xl
             </div>
           ) : (
             <div className="hidden items-center gap-2 sm:flex">
-              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/70 hover:text-white" href="/login">
+              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" href="/login">
                 Logg inn
               </Link>
-              <Link className="rounded-xl bg-[#C8102E] px-4 py-2 text-sm font-bold text-white hover:bg-[#a90d27]" href="/register">
+              <Link className="rounded-xl bg-[#C8102E] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" href="/register">
                 Start gratis
               </Link>
             </div>
@@ -118,8 +118,9 @@ function buildAppLinks(pathname: string, adminSection: boolean): NavigationLink[
 function NavLink({ link }: { link: NavigationLink }) {
   return (
     <Link
-      className={`rounded-xl px-3 py-2 transition ${
-        link.active ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/10 hover:text-white"
+      aria-current={link.active ? "page" : undefined}
+      className={`rounded-xl px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
+        link.active ? "bg-white text-[#0D1B2A] shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"
       }`}
       href={link.href}
     >

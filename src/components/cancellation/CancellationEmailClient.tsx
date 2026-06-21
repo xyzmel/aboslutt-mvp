@@ -271,7 +271,7 @@ export function CancellationEmailClient({
           </div>
           {!canSend ? (
             <div className="mt-4 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#5F6F82]">
-              Gratis-planen kan lage og kopiere utkast. Sending via Aboslutt krever beta eller premium.
+              Gratis-planen kan lage og kopiere utkast. Sending via Aboslutt krever Premium.
             </div>
           ) : null}
         </aside>

@@ -375,7 +375,7 @@ export function DashboardClient() {
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] pb-28 text-[#0D1B2A]">
       <AppHeader />
 
-      <section className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
+      <section className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7">
         {errorMessage ? (
           <div className="mb-5 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-4 text-sm font-semibold text-[#C8102E]">
             {errorMessage}
@@ -401,7 +401,7 @@ export function DashboardClient() {
 
         {step === "overview" ? (
           <>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="rounded-3xl border border-[#DBE4EE] bg-white/82 p-4 shadow-sm shadow-slate-200/70 sm:p-5 lg:flex lg:items-end lg:justify-between lg:gap-6">
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">
                   {isDevelopment && !session ? "Lokal utvikling" : "Oversikt"}
@@ -409,51 +409,62 @@ export function DashboardClient() {
                 <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
                   Abonnementene dine
                 </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5F6F82]">
+                  Se faste kostnader, kommende trekk og abonnementer du vurderer å avslutte.
+                </p>
               </div>
-              <button
-                className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                onClick={toggleSelectAll}
-                type="button"
-              >
-                Velg alle synlige
-              </button>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row lg:mt-0">
+                <a
+                  className="rounded-xl bg-[#C8102E] px-4 py-3 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/20 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  href="#manual-add"
+                >
+                  Legg til abonnement
+                </a>
+                <Link
+                  className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-center text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  href="/import/email"
+                >
+                  Importer fra e-post
+                </Link>
+                <button
+                  className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#F7F9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  onClick={toggleSelectAll}
+                  type="button"
+                >
+                  Velg alle synlige
+                </button>
+              </div>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <SummaryCard label="Totalt per måned" value={`${totalMonthlyCost} kr`} />
-              <SummaryCard label="Aktive abonnementer" value={String(activeCount)} />
-              <SummaryCard label="Estimert per år" value={`${formatCurrency(yearlyEstimate)} kr`} />
-              <SummaryCard label="Prøveperioder" value={String(trialCount)} />
-            </div>
-
-            <div className="mt-6 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-              <PlanStatusCard plan={currentPlan} />
-              {showOnboardingChecklist ? (
-                <OnboardingChecklist
-                  emailRemindersEnabled={emailRemindersEnabled}
-                  hasAnyNextPayment={hasAnyNextPayment}
-                  hasGoogleGmailConnected={hasGoogleGmailConnected}
-                  hasSubscriptions={hasSubscriptions}
-                  monthlyTotal={totalMonthlyCost}
-                />
-              ) : (
-                <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Kom i gang</p>
-                  <h2 className="mt-1 text-2xl font-extrabold tracking-tight">Oppstarten ser bra ut</h2>
-                  <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
-                    Du har lagt inn abonnementer, datoer, varsler, Gmail og månedlig total.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <UpcomingPayments subscriptions={upcomingPayments} />
-              <SavingsInsight
-                monthlySavings={monthlySavings}
-                selectedCount={selectedIds.length}
-                trialCount={trialCount}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryCard
+                accent="red"
+                helper="Faste kostnader i aktiv oversikt"
+                label="Totalt per måned"
+                value={`${formatCurrency(totalMonthlyCost)} kr`}
               />
+              <SummaryCard
+                accent="navy"
+                helper="Aktive, prøve og årlige"
+                label="Aktive abonnementer"
+                value={String(activeCount)}
+              />
+              <SummaryCard
+                accent="blue"
+                helper="Basert på månedlig total"
+                label="Estimert per år"
+                value={`${formatCurrency(yearlyEstimate)} kr`}
+              />
+              <SummaryCard
+                accent="amber"
+                helper="Bør sjekkes før trekk"
+                label="Prøveperioder"
+                value={String(trialCount)}
+              />
+            </div>
+
+            <div className="mt-4">
+              <UpcomingPayments subscriptions={upcomingPayments} />
             </div>
 
             {cancellationFollowUps.length > 0 ? (
@@ -462,81 +473,6 @@ export function DashboardClient() {
                 subscriptions={cancellationFollowUps}
               />
             ) : null}
-
-            <form
-              className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]"
-              id="manual-add"
-              onSubmit={addSubscription}
-            >
-              <h2 className="text-lg font-extrabold tracking-tight">Legg til abonnement</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-6">
-                <TextInput
-                  label="Navn"
-                  onChange={(value) => setForm((current) => ({ ...current, name: value }))}
-                  placeholder="F.eks. HBO Max"
-                  value={form.name}
-                />
-                <TextInput
-                  inputMode="numeric"
-                  label="Kr/mnd"
-                  onChange={(value) => setForm((current) => ({ ...current, monthlyCost: value }))}
-                  placeholder="149"
-                  value={form.monthlyCost}
-                />
-                <SelectInput
-                  label="Kategori"
-                  onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      category: value as SubscriptionCategory,
-                    }))
-                  }
-                  options={[...categoryOptions]}
-                  value={form.category}
-                />
-                <SelectInput
-                  label="Status"
-                  onChange={(value) =>
-                    setForm((current) => ({ ...current, status: value as SubscriptionStatus }))
-                  }
-                  options={[
-                    ["active", "Aktiv"],
-                    ["trial", "Prøveperiode"],
-                    ["yearly", "Årlig"],
-                  ]}
-                  value={form.status}
-                />
-                <SelectInput
-                  label="Intervall"
-                  onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      billingInterval: value as BillingInterval,
-                    }))
-                  }
-                  options={[...billingIntervalOptions]}
-                  value={form.billingInterval}
-                />
-                <DateInput
-                  label="Neste trekk"
-                  onChange={(value) => setForm((current) => ({ ...current, nextPayment: value }))}
-                  value={form.nextPayment}
-                />
-                <TextInput
-                  label="Notat"
-                  onChange={(value) => setForm((current) => ({ ...current, note: value }))}
-                  placeholder="Valgfritt"
-                  value={form.note}
-                />
-              </div>
-              <button
-                className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#15283c] disabled:opacity-50"
-                disabled={isSaving}
-                type="submit"
-              >
-                {isSaving ? "Lagrer..." : "Legg til"}
-              </button>
-            </form>
 
             <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
               {filters.map((filter) => (
@@ -611,6 +547,113 @@ export function DashboardClient() {
                 Alle abonnementer er markert som avsluttet.
               </div>
             ) : null}
+
+            <form
+              className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]"
+              id="manual-add"
+              onSubmit={addSubscription}
+            >
+              <h2 className="text-lg font-extrabold tracking-tight">Legg til abonnement</h2>
+              <p className="mt-1 text-sm text-[#5F6F82]">
+                Registrer abonnementet manuelt med pris, kategori og neste trekk.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-6">
+                <TextInput
+                  label="Navn"
+                  onChange={(value) => setForm((current) => ({ ...current, name: value }))}
+                  placeholder="F.eks. HBO Max"
+                  value={form.name}
+                />
+                <TextInput
+                  inputMode="numeric"
+                  label="Kr/mnd"
+                  onChange={(value) => setForm((current) => ({ ...current, monthlyCost: value }))}
+                  placeholder="149"
+                  value={form.monthlyCost}
+                />
+                <SelectInput
+                  label="Kategori"
+                  onChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      category: value as SubscriptionCategory,
+                    }))
+                  }
+                  options={[...categoryOptions]}
+                  value={form.category}
+                />
+                <SelectInput
+                  label="Status"
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, status: value as SubscriptionStatus }))
+                  }
+                  options={[
+                    ["active", "Aktiv"],
+                    ["trial", "Prøveperiode"],
+                    ["yearly", "Årlig"],
+                  ]}
+                  value={form.status}
+                />
+                <SelectInput
+                  label="Intervall"
+                  onChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      billingInterval: value as BillingInterval,
+                    }))
+                  }
+                  options={[...billingIntervalOptions]}
+                  value={form.billingInterval}
+                />
+                <DateInput
+                  label="Neste trekk"
+                  onChange={(value) => setForm((current) => ({ ...current, nextPayment: value }))}
+                  value={form.nextPayment}
+                />
+                <TextInput
+                  label="Notat"
+                  onChange={(value) => setForm((current) => ({ ...current, note: value }))}
+                  placeholder="Valgfritt"
+                  value={form.note}
+                />
+              </div>
+              <button
+                className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#15283c] disabled:opacity-50"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Lagrer..." : "Legg til"}
+              </button>
+            </form>
+
+            <div className="mt-6">
+              <SavingsInsight
+                monthlySavings={monthlySavings}
+                selectedCount={selectedIds.length}
+                trialCount={trialCount}
+              />
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+              {showOnboardingChecklist ? (
+                <OnboardingChecklist
+                  emailRemindersEnabled={emailRemindersEnabled}
+                  hasAnyNextPayment={hasAnyNextPayment}
+                  hasGoogleGmailConnected={hasGoogleGmailConnected}
+                  hasSubscriptions={hasSubscriptions}
+                  monthlyTotal={totalMonthlyCost}
+                />
+              ) : (
+                <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Kom i gang</p>
+                  <h2 className="mt-1 text-xl font-extrabold tracking-tight">Oppstarten ser bra ut</h2>
+                  <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+                    Du har lagt inn abonnementer, datoer, varsler, Gmail og månedlig total.
+                  </p>
+                </div>
+              )}
+              <PlanStatusCard plan={currentPlan} />
+            </div>
           </>
         ) : null}
       </section>
@@ -650,54 +693,90 @@ export function DashboardClient() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  helper,
+  accent,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  accent: "red" | "navy" | "blue" | "amber";
+}) {
+  const accentClasses = {
+    red: "bg-[#C8102E]",
+    navy: "bg-[#0D1B2A]",
+    blue: "bg-blue-600",
+    amber: "bg-amber-500",
+  };
+
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-      <p className="text-sm font-semibold text-[#5F6F82]">{label}</p>
-      <p className="mt-2 text-3xl font-black tracking-tight text-[#0D1B2A]">{value}</p>
+    <div className="relative overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE]">
+      <div className={`absolute inset-x-0 top-0 h-1 ${accentClasses[accent]}`} />
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#5F6F82]">{label}</p>
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${accentClasses[accent]}`} aria-hidden="true" />
+      </div>
+      <p className="mt-2 text-2xl font-black tracking-tight text-[#0D1B2A] sm:text-3xl">{value}</p>
+      <p className="mt-1 text-xs font-semibold leading-5 text-[#5F6F82]">{helper}</p>
     </div>
   );
 }
 
 function UpcomingPayments({ subscriptions }: { subscriptions: UpcomingPayment[] }) {
   return (
-    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-      <div className="flex items-start justify-between gap-4">
+    <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE] sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-extrabold tracking-tight">Kommende trekk</h2>
           <p className="mt-1 text-sm text-[#5F6F82]">Neste 30 dager, sortert etter dato.</p>
         </div>
-        <span className="rounded-full bg-[#F0F4F8] px-3 py-1 text-xs font-bold text-[#4A5568]">
-          {subscriptions.length}
+        <span className="w-fit rounded-full bg-[#F0F4F8] px-3 py-1 text-xs font-bold text-[#4A5568]">
+          {subscriptions.length} kommende
         </span>
       </div>
 
       {subscriptions.length > 0 ? (
-        <div className="mt-4 divide-y divide-[#DBE4EE]">
-          {subscriptions.map(({ subscription, paymentDate }) => (
-            <div className="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center" key={subscription.id}>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-[#0D1B2A]">
-                  {subscription.name}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge label={getCategoryLabel(subscription.category)} />
-                  <Badge label={getSourceLabel(subscription.source)} />
+        <div className="mt-4 grid gap-3">
+          {subscriptions.map(({ subscription, paymentDate }) => {
+            const daysUntil = getDaysUntil(paymentDate);
+            const isNearTerm = daysUntil <= 7;
+
+            return (
+              <div
+                className={`grid gap-3 rounded-2xl border p-4 sm:grid-cols-[1fr_auto] sm:items-center ${
+                  isNearTerm ? "border-[#F3C3CC] bg-[#FFF8F9]" : "border-[#DBE4EE] bg-[#F7F9FC]"
+                }`}
+                key={subscription.id}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-base font-extrabold text-[#0D1B2A]">{subscription.name}</p>
+                    {isNearTerm ? <Badge label="Snart" tone="red" /> : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge label={getCategoryLabel(subscription.category)} />
+                    <Badge label={getSourceLabel(subscription.source)} />
+                    <Badge label={getDaysUntilLabel(daysUntil)} tone={isNearTerm ? "red" : "neutral"} />
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#DBE4EE] sm:text-right">
+                  <p className="text-2xl font-black text-[#0D1B2A]">
+                    {formatCurrency(getMonthlyEquivalent(subscription))} kr
+                  </p>
+                  <p className="mt-1 font-semibold text-[#5F6F82]">{formatDateForShortDisplay(paymentDate)}</p>
                 </div>
               </div>
-              <div className="text-sm sm:text-right">
-                <p className="font-black text-[#0D1B2A]">
-                  {formatCurrency(getMonthlyEquivalent(subscription))} kr
-                </p>
-                <p className="mt-1 text-[#5F6F82]">{formatDateForShortDisplay(paymentDate)}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
-        <div className="mt-4 rounded-xl bg-[#F7F9FC] p-4 text-sm text-[#5F6F82]">
-          Ingen kjente trekk de neste 30 dagene. Legg inn neste trekk på abonnementene dine for
-          å få bedre varsling.
+        <div className="mt-4 rounded-2xl border border-dashed border-[#C8D4E2] bg-[#F7F9FC] p-5 text-sm text-[#5F6F82]">
+          <p className="font-extrabold text-[#0D1B2A]">Ingen kjente trekk de neste 30 dagene</p>
+          <p className="mt-2 leading-6">
+            Legg inn neste trekk på abonnementene dine for å få bedre varsling og en mer nyttig tidslinje.
+          </p>
         </div>
       )}
     </section>
@@ -797,23 +876,35 @@ function SavingsInsight({
   selectedCount: number;
   trialCount: number;
 }) {
+  const yearlySavings = monthlySavings * 12;
+
   return (
-    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-      <h2 className="text-lg font-extrabold tracking-tight">Sparingsinnsikt</h2>
-      <p className="mt-1 text-sm text-[#5F6F82]">
-        Velg abonnementer du vurderer å avslutte for å se potensiell sparing.
-      </p>
-      <div className="mt-5 rounded-2xl bg-[#0D1B2A] p-5 text-white">
-        <p className="text-sm font-semibold text-white/65">Potensiell sparing per måned</p>
-        <p className="mt-2 text-4xl font-black">{formatCurrency(monthlySavings)} kr</p>
-        <p className="mt-2 text-sm text-white/65">
-          {selectedCount > 0
-            ? `${selectedCount} abonnementer vurderes avsluttet.`
-            : "Velg abonnementer du vurderer å avslutte for å se potensiell sparing."}
-        </p>
+    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
+      <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-[#0D1B2A] p-5 text-white">
+          <h2 className="text-lg font-extrabold tracking-tight">Sparingsinnsikt</h2>
+          <p className="mt-2 text-sm leading-6 text-white/68">
+            Velg abonnementer i listen for å se hva du kan spare hvis de avsluttes.
+          </p>
+        </div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <div className="rounded-2xl bg-[#F7F9FC] p-4 ring-1 ring-[#DBE4EE]">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#5F6F82]">Per måned</p>
+            <p className="mt-2 text-3xl font-black text-[#0D1B2A]">{formatCurrency(monthlySavings)} kr</p>
+          </div>
+          <div className="rounded-2xl bg-[#FFF8F9] p-4 ring-1 ring-[#F3C3CC]">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#8A4B13]">Per år</p>
+            <p className="mt-2 text-3xl font-black text-[#0D1B2A]">{formatCurrency(yearlySavings)} kr</p>
+          </div>
+          <p className="text-sm leading-6 text-[#5F6F82] sm:col-span-2">
+            {selectedCount > 0
+              ? `${selectedCount} abonnementer er valgt for vurdering. Beløpet er estimert fra månedlig verdi.`
+              : "Ingen abonnementer er valgt ennå. Trykk «Vurder» på abonnementer du vurderer å avslutte."}
+          </p>
+        </div>
       </div>
       {trialCount > 0 ? (
-        <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+        <p className="border-t border-[#DBE4EE] bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900">
           Du har {trialCount} prøveperioder. Sjekk dem før neste trekk.
         </p>
       ) : null}
@@ -821,9 +912,16 @@ function SavingsInsight({
   );
 }
 
-function Badge({ label }: { label: string }) {
+function Badge({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "red" | "green" | "blue" }) {
+  const toneClasses = {
+    neutral: "bg-[#F0F4F8] text-[#4A5568]",
+    red: "bg-[#F5E6E9] text-[#C8102E]",
+    green: "bg-emerald-50 text-emerald-700",
+    blue: "bg-blue-50 text-blue-700",
+  };
+
   return (
-    <span className="rounded-full bg-[#F0F4F8] px-2.5 py-1 text-xs font-bold text-[#4A5568]">
+    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}>
       {label}
     </span>
   );
@@ -859,6 +957,24 @@ function getDaysSince(date: Date) {
   const today = startOfDay(new Date());
   const startedAt = startOfDay(date);
   return Math.floor((today.getTime() - startedAt.getTime()) / 86_400_000);
+}
+
+function getDaysUntil(date: Date) {
+  const today = startOfDay(new Date());
+  const targetDate = startOfDay(date);
+  return Math.max(0, Math.ceil((targetDate.getTime() - today.getTime()) / 86_400_000));
+}
+
+function getDaysUntilLabel(daysUntil: number) {
+  if (daysUntil === 0) {
+    return "I dag";
+  }
+
+  if (daysUntil === 1) {
+    return "I morgen";
+  }
+
+  return `Om ${daysUntil} dager`;
 }
 
 function getMonthlyEquivalent(subscription: Subscription) {

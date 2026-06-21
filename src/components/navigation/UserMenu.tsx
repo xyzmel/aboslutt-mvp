@@ -16,7 +16,7 @@ export function UserMenu({ name, email, plan, isAdmin = false }: UserMenuProps) 
 
   return (
     <details className="relative">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full bg-white/10 py-1.5 pl-1.5 pr-3 text-sm font-semibold text-white/85 outline-none ring-white/20 transition hover:bg-white/15 focus-visible:ring-2">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full bg-white/10 py-1.5 pl-1.5 pr-3 text-sm font-semibold text-white/85 outline-none ring-white/20 transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/50">
         <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-[#C8102E] px-2 text-xs font-black text-white">
           {initials}
         </span>
@@ -31,22 +31,22 @@ export function UserMenu({ name, email, plan, isAdmin = false }: UserMenuProps) 
           </span>
         </div>
         <div className="grid p-2 text-sm font-semibold">
-          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8]" href="/dashboard">
+          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]" href="/dashboard">
             Oversikt
           </Link>
           {isAdmin ? (
-            <Link className="rounded-xl px-3 py-2 text-[#C8102E] hover:bg-[#F5E6E9]" href="/admin">
+            <Link className="rounded-xl px-3 py-2 text-[#C8102E] hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]" href="/admin">
               Admin
             </Link>
           ) : null}
-          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8]" href="/pricing">
+          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]" href="/pricing">
             Min plan/priser
           </Link>
-          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8]" href="/settings">
+          <Link className="rounded-xl px-3 py-2 hover:bg-[#F0F4F8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]" href="/settings">
             Innstillinger
           </Link>
           <button
-            className="rounded-xl px-3 py-2 text-left font-semibold text-[#C8102E] hover:bg-[#F5E6E9]"
+            className="rounded-xl px-3 py-2 text-left font-semibold text-[#C8102E] hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]"
             onClick={() => signOut({ callbackUrl: "/login" })}
             type="button"
           >

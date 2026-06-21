@@ -274,7 +274,7 @@ export function SettingsClient({
           </p>
           {!emailRemindersAvailable || !monthlySummaryAvailable ? (
             <p className="mt-3 rounded-xl bg-[#FFF6E8] px-4 py-3 text-sm font-semibold text-[#8A4B13]">
-              Varsler er tilgjengelig for beta og premium. Du kan fortsatt legge inn abonnementer manuelt gratis.
+              Varsler er tilgjengelig med Premium. Du kan fortsatt legge inn abonnementer manuelt gratis.
             </p>
           ) : null}
           <div className="mt-5 grid gap-4">
@@ -423,7 +423,7 @@ function PriceBox({ title, price, badge }: { title: string; price: string; badge
 function formatPlan(plan: string) {
   const labels: Record<string, string> = {
     free: "Gratis",
-    beta: "Beta",
+    beta: "Premium",
     premium: "Premium",
     admin: "Admin",
   };

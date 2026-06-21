@@ -55,7 +55,7 @@ export function getManualSubscriptionLimit(user: PlanLikeUser) {
 export function getPlanDisplayName(plan: Plan) {
   const labels: Record<Plan, string> = {
     free: "Gratis",
-    beta: "Beta",
+    beta: "Premium",
     premium: "Premium",
     admin: "Admin",
   };
@@ -71,16 +71,17 @@ export function getPlanFeatures(plan: Plan) {
         "Månedlig og årlig oversikt",
         "Grunnleggende dashboard",
       ],
-      locked: ["Gmail-skanning", "E-postvarsler", "Månedlig oppsummering"],
+      locked: ["Automatisk Gmail-skanning", "E-postvarsler", "Månedlig oppsummering", "Oppsigelseshjelp"],
     };
   }
 
   return {
     included: [
       "Ubegrensede abonnementer",
-      "Gmail-skanning",
+      "Automatisk Gmail-skanning",
       "E-postvarsler",
       "Månedlig oppsummering",
+      "Oppsigelseshjelp",
     ],
     locked: [] as string[],
   };
