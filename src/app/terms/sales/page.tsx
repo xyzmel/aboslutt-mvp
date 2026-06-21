@@ -24,24 +24,24 @@ export default function SalesTermsPage() {
       </TermsSection>
 
       <TermsSection title="Pris og betaling">
-        Gratis-planen koster 0 kr. Premium månedlig koster 29 kr per måned. Premium årlig beta-pris
-        koster 99 kr per år for tidlige brukere. Betaling er ikke aktivert før checkout er konfigurert.
-        Når betaling aktiveres, vil pris og periode vises tydelig før kjøp.
+        Gratis-planen koster 0 kr. Premium månedlig koster 79 kr per måned. Premium årlig koster 499 kr per år.
+        Fast trekk starter først etter at brukeren har godkjent avtalen i Vipps. Pris og periode vises tydelig før
+        kjøp, og betaling behandles av Vipps MobilePay.
       </TermsSection>
 
       <TermsSection title="Levering/tilgang">
-        Premium er en digital tjeneste som leveres umiddelbart etter bekreftet betaling. Brukeren får
-        tilgang til premiumfunksjoner på kontoen sin når betalingen er verifisert.
+        Premium er en digital tjeneste som leveres etter bekreftet betaling. Brukeren får tilgang til
+        premiumfunksjoner på kontoen sin når betalingen er verifisert.
       </TermsSection>
 
       <TermsSection title="Bindingstid">
-        Det er ingen bindingstid med mindre dette uttrykkelig oppgis i checkout eller i tilbudet. Betalt
-        abonnement løper for valgt periode frem til det sies opp eller utløper etter gjeldende vilkår.
+        Det er ingen bindingstid. Betalt abonnement løper for valgt periode frem til det sies opp, stoppes eller
+        utløper etter gjeldende vilkår.
       </TermsSection>
 
       <TermsSection title="Oppsigelse og fast trekk">
-        Det er ingen bindingstid. Dersom du ønsker å stoppe avtale om fast trekk eller avslutte abonnementet
-        ditt, kan du gjøre dette ved å kontakte oss på e-post{" "}
+        Dersom du ønsker å stoppe avtale om fast trekk eller avslutte abonnementet ditt, kan du gjøre dette ved å
+        kontakte oss på e-post{" "}
         <a className="font-semibold text-[#C8102E]" href={`mailto:${siteConfig.contactEmail}`}>
           {siteConfig.contactEmail}
         </a>
@@ -50,9 +50,8 @@ export default function SalesTermsPage() {
       </TermsSection>
 
       <TermsSection title="Oppsigelse og endring av abonnement">
-        Når betaling er implementert, skal brukeren kunne administrere eller si opp betalt abonnement fra
-        innstillinger/konto. Oppsigelse av Aboslutt Premium påvirker ikke brukerens abonnementer hos andre
-        leverandører.
+        Oppsigelse av Aboslutt Premium påvirker ikke brukerens abonnementer hos andre leverandører. Tilgang kan
+        nedgraderes dersom betaling feiler, utløper, avbrytes, kanselleres eller den faste Vipps-avtalen stoppes.
       </TermsSection>
 
       <TermsSection title="Angrerett">
@@ -61,8 +60,8 @@ export default function SalesTermsPage() {
       </TermsSection>
 
       <TermsSection title="Retur/refusjon">
-        Refusjon vurderes ved feilbelastning eller hvis tjenesten ikke leveres som avtalt. Ta kontakt på
-        e-post med kontoinformasjon og beskrivelse av saken.
+        Refusjon vurderes ved feilbelastning eller hvis tjenesten ikke leveres som avtalt. Ta kontakt på e-post
+        med kontoinformasjon og beskrivelse av saken.
       </TermsSection>
 
       <TermsSection title="Reklamasjon">
@@ -71,8 +70,8 @@ export default function SalesTermsPage() {
       </TermsSection>
 
       <TermsSection title="Konfliktløsning">
-        Tvister forsøkes løst i minnelighet. Forbrukere kan kontakte Forbrukerrådet eller relevante
-        klageorganer dersom saken ikke løses direkte.
+        Tvister forsøkes løst i minnelighet. Forbrukere kan kontakte Forbrukerrådet eller relevante klageorganer
+        dersom saken ikke løses direkte.
       </TermsSection>
 
       <TermsSection title="Kontaktinformasjon">

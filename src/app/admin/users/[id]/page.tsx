@@ -75,6 +75,27 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
             },
           },
         },
+        billingAgreements: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            provider: true,
+            providerAgreementId: true,
+            providerChargeId: true,
+            reference: true,
+            plan: true,
+            status: true,
+            priceNok: true,
+            interval: true,
+            currency: true,
+            createdAt: true,
+            updatedAt: true,
+            activatedAt: true,
+            cancelledAt: true,
+            expiresAt: true,
+          },
+        },
       },
     });
 
@@ -88,6 +109,7 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
         account.provider === "google" &&
         account.scope?.split(" ").includes("https://www.googleapis.com/auth/gmail.readonly"),
     );
+    const billingEvents = await getBillingEventsForAgreements(user.billingAgreements);
 
     return (
       <main className="min-h-screen bg-[#F0F4F8] text-[#0D1B2A]">
@@ -129,6 +151,38 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
               </section>
 
               <AdminUserActions email={user.email} plan={user.plan} userId={user.id} />
+              <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+                <h2 className="text-lg font-extrabold tracking-tight">Vipps billing</h2>
+                <div className="mt-4 grid gap-3 text-sm">
+                  {user.billingAgreements.length > 0 ? (
+                    user.billingAgreements.map((agreement) => (
+                      <div className="rounded-xl bg-[#F7F9FC] p-3" key={agreement.id}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold">{formatBillingPlan(agreement.plan)}</p>
+                            <p className="mt-1 text-xs text-[#5F6F82]">
+                              {agreement.provider} · {agreement.reference}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0D1B2A] ring-1 ring-[#DBE4EE]">
+                            {agreement.status}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid gap-2 text-xs text-[#5F6F82]">
+                          <InfoRow label="Pris" value={`${agreement.priceNok} ${agreement.currency} / ${formatBillingInterval(agreement.interval)}`} />
+                          <InfoRow label="Opprettet" value={formatDate(agreement.createdAt)} />
+                          <InfoRow label="Aktivert" value={agreement.activatedAt ? formatDate(agreement.activatedAt) : "Ikke aktivert"} />
+                          <InfoRow label="Avsluttet" value={agreement.cancelledAt ? formatDate(agreement.cancelledAt) : "Nei"} />
+                          <InfoRow label="Vipps agreement" value={agreement.providerAgreementId ?? "Mangler"} />
+                          <InfoRow label="Vipps charge" value={agreement.providerChargeId ?? "Mangler"} />
+                        </dl>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[#5F6F82]">Ingen Vipps billing agreements.</p>
+                  )}
+                </div>
+              </section>
               <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
                 <h2 className="text-lg font-extrabold tracking-tight">Oppsigelser</h2>
                 <div className="mt-4 grid gap-3 text-sm">
@@ -203,6 +257,48 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
                 <p className="p-5 text-sm text-[#5F6F82]">Brukeren har ingen abonnementer.</p>
               ) : null}
             </section>
+
+            <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#DBE4EE] lg:col-span-2">
+              <div className="border-b border-[#DBE4EE] p-5">
+                <h2 className="text-lg font-extrabold tracking-tight">Vipps billing events</h2>
+                <p className="mt-1 text-sm text-[#5F6F82]">
+                  Viser siste trygge webhookmetadata for brukerens billing agreements. Secrets, tokens og auth-headere vises ikke.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="bg-[#F7F9FC] text-xs uppercase tracking-wide text-[#5F6F82]">
+                    <tr>
+                      <th className="px-4 py-3">Tid</th>
+                      <th className="px-4 py-3">Event</th>
+                      <th className="px-4 py-3">Reference</th>
+                      <th className="px-4 py-3">Agreement</th>
+                      <th className="px-4 py-3">Charge</th>
+                      <th className="px-4 py-3">Trygg metadata</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#DBE4EE]">
+                    {billingEvents.map((event) => (
+                      <tr key={event.id}>
+                        <td className="px-4 py-3">{formatDateTime(event.createdAt)}</td>
+                        <td className="px-4 py-3 font-semibold">{event.eventType}</td>
+                        <td className="px-4 py-3">{event.reference ?? "Mangler"}</td>
+                        <td className="px-4 py-3">{event.providerAgreementId ?? "Mangler"}</td>
+                        <td className="px-4 py-3">{event.providerChargeId ?? "Mangler"}</td>
+                        <td className="max-w-md px-4 py-3">
+                          <code className="block max-h-24 overflow-auto rounded-lg bg-[#F0F4F8] p-2 text-xs text-[#334155]">
+                            {formatSafeJson(event.rawJson)}
+                          </code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {billingEvents.length === 0 ? (
+                <p className="p-5 text-sm text-[#5F6F82]">Ingen relaterte billing events.</p>
+              ) : null}
+            </section>
           </div>
         </section>
       </main>
@@ -220,6 +316,48 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-bold">{value}</dd>
     </div>
   );
+}
+
+async function getBillingEventsForAgreements(
+  agreements: {
+    reference: string;
+    providerAgreementId: string | null;
+    providerChargeId: string | null;
+  }[],
+) {
+  const references = agreements.map((agreement) => agreement.reference);
+  const providerAgreementIds = agreements
+    .map((agreement) => agreement.providerAgreementId)
+    .filter((value): value is string => Boolean(value));
+  const providerChargeIds = agreements
+    .map((agreement) => agreement.providerChargeId)
+    .filter((value): value is string => Boolean(value));
+
+  if (references.length === 0 && providerAgreementIds.length === 0 && providerChargeIds.length === 0) {
+    return [];
+  }
+
+  return prisma.billingEvent.findMany({
+    where: {
+      OR: [
+        references.length > 0 ? { reference: { in: references } } : undefined,
+        providerAgreementIds.length > 0 ? { providerAgreementId: { in: providerAgreementIds } } : undefined,
+        providerChargeIds.length > 0 ? { providerChargeId: { in: providerChargeIds } } : undefined,
+      ].filter((clause): clause is Exclude<typeof clause, undefined> => Boolean(clause)),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    select: {
+      id: true,
+      eventType: true,
+      providerEventId: true,
+      providerAgreementId: true,
+      providerChargeId: true,
+      reference: true,
+      rawJson: true,
+      createdAt: true,
+    },
+  });
 }
 
 function AdminForbidden() {
@@ -295,6 +433,72 @@ function formatDate(date: Date) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("nb-NO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatBillingPlan(plan: string) {
+  const labels: Record<string, string> = {
+    premium_monthly: "Premium månedlig",
+    premium_yearly: "Premium årlig",
+    premium_yearly_beta: "Premium årlig beta",
+  };
+
+  return labels[plan] ?? plan;
+}
+
+function formatBillingInterval(interval: string) {
+  if (interval === "month") {
+    return "mnd";
+  }
+
+  if (interval === "year") {
+    return "år";
+  }
+
+  return interval;
+}
+
+function formatSafeJson(value: unknown) {
+  return JSON.stringify(redactSensitiveMetadata(value), null, 2).slice(0, 1200);
+}
+
+function redactSensitiveMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveMetadata(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      isSensitiveMetadataKey(key) ? "[redacted]" : redactSensitiveMetadata(nestedValue),
+    ]),
+  );
+}
+
+function isSensitiveMetadataKey(key: string) {
+  const normalized = key.toLowerCase();
+
+  return (
+    normalized.includes("secret") ||
+    normalized.includes("token") ||
+    normalized.includes("authorization") ||
+    normalized.includes("subscriptionkey") ||
+    normalized.includes("subscription-key") ||
+    normalized.includes("ocp-apim-subscription-key")
+  );
 }
 
 function formatCancellationEvent(type: string) {

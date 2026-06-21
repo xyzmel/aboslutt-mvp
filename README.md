@@ -627,7 +627,9 @@ Brukeren må alltid bekrefte og kan redigere navn, beløp, kategori, intervall o
 
 Adminportalen viser trygg importkvalitet: antall lagrede importfunn, ignorerte funn, feilrapporter og siste rapporterte importfeil. Den viser ikke tokens, hemmeligheter eller rå e-postinnhold.
 
-## Vipps Payment Scaffolding
+## Vipps Payment Scaffolding (Legacy Notes)
+
+Dette er historiske notater fra før Vipps Recurring ble implementert. Bruk `Vipps Recurring Production`-seksjonen under som gjeldende produksjonsoppsett.
 
 Vipps Login er separat fra Vipps betaling. Betalingscheckout er forberedt, men ikke aktivert. Koden skal ikke late som om betaling er gjennomført, og brukerplan skal ikke settes til `premium` før en ekte, verifisert betalingshendelse er mottatt.
 
@@ -661,6 +663,79 @@ Vipps payment approval checklist:
 - Selskap vises som Melby Solutions, org.nr. 925 919 020, med kontakt `kontakt@aboslutt.no`.
 - Checkout/webhook-endepunkter finnes, men behandler ikke fake payments.
 - Når betaling aktiveres, må checkout opprette ekte Vipps payment/recurring agreement og webhook må verifisere betalingen før `User.plan` settes til `premium`.
+
+## Vipps Recurring Production
+
+Vipps Login er separat fra Vipps Recurring betaling. Premium-betaling bruker ekte server-side Vipps Recurring agreement flow, og `User.plan` skal bare settes til `premium` etter verifisert Vipps-status fra webhook eller server-side statuspolling.
+
+Produksjonsoppsett:
+
+- Merchant Serial Number/MSN: `1110206`
+- Recurring API må være aktivert: `true`
+- Webhook URL: `https://www.aboslutt.no/api/billing/vipps/webhook`
+- Webhook secret fra Vipps skal lagres som `VIPPS_WEBHOOK_SECRET`
+
+Påkrevde Vercel environment variables:
+
+```bash
+VIPPS_RECURRING_CLIENT_ID=...
+VIPPS_RECURRING_CLIENT_SECRET=...
+VIPPS_RECURRING_SUBSCRIPTION_KEY=...
+VIPPS_RECURRING_MERCHANT_SERIAL_NUMBER=1110206
+VIPPS_RECURRING_BASE_URL=https://api.vipps.no
+VIPPS_WEBHOOK_SECRET=...
+NEXT_PUBLIC_SITE_URL=https://www.aboslutt.no
+```
+
+Registrerte webhook events:
+
+- `epayments.payment.aborted.v1`
+- `epayments.payment.authorized.v1`
+- `epayments.payment.cancelled.v1`
+- `epayments.payment.captured.v1`
+- `epayments.payment.created.v1`
+- `epayments.payment.expired.v1`
+- `epayments.payment.terminated.v1`
+
+Priser:
+
+- Gratis: 0 kr, opptil 10 manuelle abonnementer, månedlig/årlig oversikt og grunnleggende dashboard.
+- Premium månedlig: 79 kr/mnd.
+- Premium årlig: 499 kr/år.
+- Beta-brukere kan fortsatt gis tilgang manuelt av admin.
+
+Filer og endepunkter:
+
+- `src/lib/billing/vipps-recurring.ts` håndterer server-side Vipps Recurring API-kall, signaturverifisering og trygg payload-sanitering.
+- `POST /api/billing/checkout` oppretter lokal `BillingAgreement`, lager Vipps Recurring agreement og returnerer Vipps redirect URL.
+- `POST /api/billing/vipps/webhook` leser rå body, verifiserer signatur, lagrer `BillingEvent`, håndterer idempotens og aktiverer/downgraderer plan server-side.
+- `GET /api/billing/status` sjekker siste pending agreement server-side og kan aktivere Premium hvis Vipps bekrefter aktiv avtale.
+- `/payment/thanks` og `/payment/cancelled` er kun informasjons-/retursider og aktiverer aldri Premium fra query params.
+
+Deployrekkefølge ved endringer:
+
+1. Legg inn eller oppdater Vercel env vars.
+2. Kjør migrasjoner mot produksjonsdatabasen:
+
+```bash
+npm run prisma:deploy
+```
+
+3. Redeploy Vercel etter env-endringer.
+4. Kontroller `/api/health`, `/pricing`, `/terms/sales`, `/payment/thanks` og `/payment/cancelled`.
+
+QA checklist:
+
+- Uten Vipps env vars returnerer `POST /api/billing/checkout` `PAYMENTS_NOT_CONFIGURED`.
+- Innlogget bruker kan starte checkout for Premium månedlig og årlig.
+- Checkout oppretter `BillingAgreement` med `status=pending`.
+- Vipps redirect går til `/payment/thanks` uten å aktivere Premium.
+- Webhook med ugyldig signatur returnerer `401`.
+- Gyldig duplicate webhook returnerer `200` uten dobbel behandling.
+- `authorized`/`captured` aktiverer Premium bare etter server-side Vipps-verifisering.
+- `aborted`, `cancelled`, `expired` og `terminated` aktiverer ikke Premium.
+- Bruker downgrades bare til `free` når ingen annen aktiv Premium billing agreement finnes, og aldri hvis brukerplanen er `admin` eller `beta`.
+- Admin bruker-detaljside viser BillingAgreements og relaterte BillingEvents uten secrets, tokens eller auth-headere.
 
 ## TODO
 
