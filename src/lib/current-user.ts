@@ -11,6 +11,7 @@ const currentUserSelect = {
   emailVerified: true,
   passwordHash: true,
   image: true,
+  phoneNumber: true,
   plan: true,
   emailRemindersEnabled: true,
   reminderDaysBefore: true,

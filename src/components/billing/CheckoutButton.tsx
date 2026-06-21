@@ -28,9 +28,9 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
         return;
       }
 
-      setMessage(getCheckoutErrorMessage(result.error, result.message));
+      setMessage(getCheckoutErrorMessage(result.error));
     } catch {
-      setMessage("Kunne ikke starte betaling akkurat nå. Prøv igjen om litt.");
+      setMessage("Kunne ikke starte betaling akkurat nå. Prøv igjen.");
     } finally {
       setIsLoading(false);
     }
@@ -51,14 +51,22 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
   );
 }
 
-function getCheckoutErrorMessage(error?: string, message?: string) {
-  if (error === "PAYMENTS_NOT_CONFIGURED") {
-    return "Vipps-betaling er ikke tilgjengelig akkurat nå. Prøv igjen senere.";
-  }
-
+function getCheckoutErrorMessage(error?: string) {
   if (error === "UNAUTHORIZED") {
-    return "Logg inn for å starte betaling med Vipps.";
+    return "Du må være logget inn for å starte Premium.";
   }
 
-  return message ?? "Kunne ikke starte betaling akkurat nå. Prøv igjen om litt.";
+  if (error === "PAYMENTS_NOT_CONFIGURED") {
+    return "Vipps-betaling er ikke ferdig konfigurert.";
+  }
+
+  if (error === "VIPPS_AGREEMENT_ERROR") {
+    return "Vipps kunne ikke opprette betalingsavtalen. Prøv igjen.";
+  }
+
+  if (error === "VIPPS_TOKEN_ERROR") {
+    return "Vipps kunne ikke kontaktes akkurat nå. Prøv igjen.";
+  }
+
+  return "Kunne ikke starte betaling akkurat nå. Prøv igjen.";
 }

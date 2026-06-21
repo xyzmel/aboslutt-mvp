@@ -31,6 +31,36 @@ type VippsAccessTokenResponse = {
   token_type?: unknown;
 };
 
+export type VippsRecurringErrorCode = "VIPPS_TOKEN_ERROR" | "VIPPS_AGREEMENT_ERROR";
+
+export class VippsRecurringError extends Error {
+  code: VippsRecurringErrorCode;
+  status?: number;
+  vippsCode?: string;
+  vippsMessage?: string;
+
+  constructor({
+    code,
+    message,
+    status,
+    vippsCode,
+    vippsMessage,
+  }: {
+    code: VippsRecurringErrorCode;
+    message: string;
+    status?: number;
+    vippsCode?: string;
+    vippsMessage?: string;
+  }) {
+    super(message);
+    this.name = "VippsRecurringError";
+    this.code = code;
+    this.status = status;
+    this.vippsCode = vippsCode;
+    this.vippsMessage = vippsMessage;
+  }
+}
+
 export type VippsRecurringUser = {
   id: string;
   email?: string | null;
@@ -107,7 +137,13 @@ export async function getAccessToken() {
   const body = (await readJsonResponse(response)) as VippsAccessTokenResponse;
 
   if (!response.ok || typeof body.access_token !== "string") {
-    throw new Error(`Vipps access token request failed with status ${response.status}.`);
+    throw new VippsRecurringError({
+      code: "VIPPS_TOKEN_ERROR",
+      message: "Vipps access token request failed.",
+      status: response.status,
+      vippsCode: getVippsResponseCode(body),
+      vippsMessage: getVippsResponseMessage(body),
+    });
   }
 
   const expiresInSeconds =
@@ -155,7 +191,12 @@ export async function createAgreement({ user, plan, reference }: VippsCreateAgre
   });
 
   if (!isJsonRecord(result) || typeof result.agreementId !== "string" || typeof result.vippsConfirmationUrl !== "string") {
-    throw new Error("Vipps agreement response did not include agreementId and vippsConfirmationUrl.");
+    throw new VippsRecurringError({
+      code: "VIPPS_AGREEMENT_ERROR",
+      message: "Vipps agreement response did not include agreementId and vippsConfirmationUrl.",
+      vippsCode: getVippsResponseCode(result),
+      vippsMessage: getVippsResponseMessage(result),
+    });
   }
 
   return {
@@ -292,7 +333,13 @@ async function vippsRequest(
   const body = await readJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(`Vipps Recurring request failed with status ${response.status}.`);
+    throw new VippsRecurringError({
+      code: "VIPPS_AGREEMENT_ERROR",
+      message: "Vipps Recurring request failed.",
+      status: response.status,
+      vippsCode: getVippsResponseCode(body),
+      vippsMessage: getVippsResponseMessage(body),
+    });
   }
 
   return body;
@@ -345,15 +392,33 @@ function getSiteUrl() {
 function normalizePhoneNumber(phoneNumber: string | null | undefined) {
   const digits = phoneNumber?.replace(/\D/g, "") ?? "";
 
-  if (!digits) {
-    return null;
-  }
-
   if (digits.length === 8) {
     return `47${digits}`;
   }
 
-  return digits.slice(0, 15);
+  if (digits.length === 10 && digits.startsWith("47")) {
+    return digits;
+  }
+
+  return null;
+}
+
+function getVippsResponseCode(payload: unknown) {
+  if (!isJsonRecord(payload)) {
+    return undefined;
+  }
+
+  const value = payload.code ?? payload.errorCode ?? payload.error ?? payload.type;
+  return typeof value === "string" ? value : undefined;
+}
+
+function getVippsResponseMessage(payload: unknown) {
+  if (!isJsonRecord(payload)) {
+    return undefined;
+  }
+
+  const value = payload.message ?? payload.errorMessage ?? payload.error_description ?? payload.detail;
+  return typeof value === "string" ? value : undefined;
 }
 
 function toVippsIdempotencyKey(value: string) {

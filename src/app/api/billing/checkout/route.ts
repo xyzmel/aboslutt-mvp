@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   createAgreement,
   isVippsRecurringConfigured,
+  VippsRecurringError,
   type VippsRecurringAgreementPlan,
 } from "@/lib/billing/vipps-recurring";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
@@ -42,7 +43,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const reference = createBillingReference();
+
   if (!isVippsRecurringConfigured()) {
+    console.error("[billing:checkout]", {
+      error: "PAYMENTS_NOT_CONFIGURED",
+      reference,
+      plan: plan.id,
+      config: getSafeVippsRecurringConfigStatus(),
+    });
+
     return NextResponse.json(
       {
         ok: false,
@@ -52,7 +62,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const reference = createBillingReference();
   const billingAgreement = await prisma.billingAgreement.create({
     data: {
       userId: currentUser.id,
@@ -89,7 +98,30 @@ export async function POST(request: Request) {
       data: { status: "failed" },
     });
 
-    throw error;
+    logCheckoutError(error, reference, plan.id);
+
+    if (error instanceof VippsRecurringError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: error.code,
+          message:
+            error.code === "VIPPS_TOKEN_ERROR"
+              ? "Kunne ikke koble til Vipps akkurat nå."
+              : "Vipps kunne ikke opprette betalingsavtalen.",
+        },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "INTERNAL_ERROR",
+        message: "Kunne ikke starte betaling akkurat nå.",
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -103,4 +135,37 @@ function isCheckoutPlanId(plan: string): plan is CheckoutPlanId {
 
 function createBillingReference() {
   return `vipps-${Date.now().toString(36)}-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+}
+
+function getSafeVippsRecurringConfigStatus() {
+  return {
+    hasClientId: Boolean(process.env.VIPPS_RECURRING_CLIENT_ID?.trim()),
+    hasClientSecret: Boolean(process.env.VIPPS_RECURRING_CLIENT_SECRET?.trim()),
+    hasSubscriptionKey: Boolean(process.env.VIPPS_RECURRING_SUBSCRIPTION_KEY?.trim()),
+    hasMerchantSerialNumber: Boolean(process.env.VIPPS_RECURRING_MERCHANT_SERIAL_NUMBER?.trim()),
+    hasBaseUrl: Boolean(process.env.VIPPS_RECURRING_BASE_URL?.trim()),
+    hasWebhookSecret: Boolean(process.env.VIPPS_WEBHOOK_SECRET?.trim()),
+    hasSiteUrl: Boolean(process.env.NEXT_PUBLIC_SITE_URL?.trim()),
+  };
+}
+
+function logCheckoutError(error: unknown, reference: string, plan: CheckoutPlanId) {
+  if (error instanceof VippsRecurringError) {
+    console.error("[billing:checkout]", {
+      error: error.code,
+      status: error.status,
+      vippsCode: error.vippsCode,
+      vippsMessage: error.vippsMessage,
+      reference,
+      plan,
+    });
+    return;
+  }
+
+  console.error("[billing:checkout]", {
+    error: error instanceof Error ? error.name : "UnknownError",
+    message: error instanceof Error ? error.message : "Unknown checkout error",
+    reference,
+    plan,
+  });
 }
