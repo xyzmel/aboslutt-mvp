@@ -59,16 +59,16 @@ const plans = [
   },
   {
     name: "Premium månedlig",
-    price: "29 kr/mnd",
+    price: "79 kr/mnd",
     description: "For deg som vil automatisere oversikten.",
     features: ["Gmail-skanning", "E-postpåminnelser", "Månedlig oppsummering", "Oppsigelsesassistent"],
     highlighted: true,
   },
   {
-    name: "Premium årlig beta",
-    price: "99 kr/år",
-    description: "Beta/early price for tidlige brukere.",
-    features: ["Alt i Premium", "Årspris for beta", "Admin kan gi beta manuelt", "Betaling kommer snart"],
+    name: "Premium årlig",
+    price: "499 kr/år",
+    description: "For deg som vil ha Premium hele året.",
+    features: ["Alt i Premium", "Årspris for lavere månedspris", "Vipps-betaling", "Automatisk aktivering"],
   },
 ];
 
@@ -167,7 +167,7 @@ export function LandingScreen({ authConfig, user }: LandingScreenProps) {
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Planer for beta</h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/68">
                 Manuell oversikt er gratis. Premium gir automatisk skanning, varsler, månedlige oppsummeringer
-                og oppsigelsesassistent. Betaling starter først når checkout er konfigurert.
+                og oppsigelsesassistent. Premium aktiveres automatisk når betalingen er bekreftet av Vipps.
               </p>
             </div>
             <Link className="text-sm font-bold text-white/70 hover:text-white" href="/pricing">

@@ -14,8 +14,8 @@ export const billingPlans = {
   premiumMonthly: {
     id: "premium_monthly",
     name: "Premium månedlig",
-    priceLabel: "29 kr/mnd",
-    amountNok: 29,
+    priceLabel: "79 kr/mnd",
+    amountNok: 79,
     interval: "month",
     features: [
       "Ubegrensede abonnementer",
@@ -25,27 +25,26 @@ export const billingPlans = {
       "Oppsigelsesassistent",
     ],
   },
-  premiumYearlyBeta: {
-    id: "premium_yearly_beta",
-    name: "Premium årlig beta",
-    priceLabel: "99 kr/år",
-    amountNok: 99,
+  premiumYearly: {
+    id: "premium_yearly",
+    name: "Premium årlig",
+    priceLabel: "499 kr/år",
+    amountNok: 499,
     interval: "year",
-    badge: "Beta/early price",
     features: [
       "Alt i Premium månedlig",
-      "Beta/early price for første år",
+      "Årspris for lavere månedspris",
       "Leverandørspesifikk oppsigelsesveiledning",
     ],
   },
 } as const;
 
-export type CheckoutPlanId = "premium_monthly" | "premium_yearly_beta";
+export type CheckoutPlanId = "premium_monthly" | "premium_yearly";
 
 export function isCheckoutPlanId(value: string): value is CheckoutPlanId {
-  return value === billingPlans.premiumMonthly.id || value === billingPlans.premiumYearlyBeta.id;
+  return value === billingPlans.premiumMonthly.id || value === billingPlans.premiumYearly.id;
 }
 
 export function getCheckoutPlan(value: CheckoutPlanId) {
-  return value === "premium_monthly" ? billingPlans.premiumMonthly : billingPlans.premiumYearlyBeta;
+  return value === "premium_monthly" ? billingPlans.premiumMonthly : billingPlans.premiumYearly;
 }

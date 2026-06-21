@@ -159,14 +159,13 @@ export function SettingsClient({
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <PriceBox title={billingPlans.premiumMonthly.name} price={billingPlans.premiumMonthly.priceLabel} />
             <PriceBox
-              badge="Beta/early price"
-              title={billingPlans.premiumYearlyBeta.name}
-              price={billingPlans.premiumYearlyBeta.priceLabel}
+              title={billingPlans.premiumYearly.name}
+              price={billingPlans.premiumYearly.priceLabel}
             />
           </div>
           {!paymentsConfigured ? (
             <p className="mt-4 rounded-xl bg-[#FFF6E8] px-4 py-3 text-sm font-semibold text-[#8A4B13]">
-              Betaling kommer snart. Du kan fortsatt bruke gratisplanen eller be om beta-tilgang.
+              Vipps-betaling er ikke tilgjengelig akkurat nå. Du kan fortsatt bruke gratisplanen.
             </p>
           ) : null}
           {plan === "premium" ? (
@@ -176,9 +175,9 @@ export function SettingsClient({
           ) : (
             <a
               className="mt-4 inline-flex rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
-              href={paymentsConfigured ? "/pricing" : "/pricing#beta"}
+              href="/pricing"
             >
-              {paymentsConfigured ? "Se Premium" : "Be om beta-tilgang"}
+              Se Premium
             </a>
           )}
         </section>

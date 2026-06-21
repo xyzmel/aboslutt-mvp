@@ -1,19 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
-import { BetaRequestForm } from "@/components/beta/BetaRequestForm";
 import { CheckoutButton } from "@/components/billing/CheckoutButton";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { authOptions } from "@/lib/auth";
 import { billingPlans } from "@/lib/billing/plans";
-import { isVippsPaymentConfigured } from "@/lib/billing/vipps";
 import { siteConfig } from "@/lib/site-config";
 
 export default async function PricingPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user ? { email: session.user.email ?? null } : null;
-  const paymentsConfigured = isVippsPaymentConfigured();
 
   return (
     <main className="flex min-h-screen flex-col bg-[#0D1B2A] text-white">
@@ -26,9 +23,8 @@ export default async function PricingPage() {
             Start gratis. Oppgrader når du vil automatisere.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-white/68">
-            Manuell abonnementssporing er gratis. Premium åpner for automatisk skanning,
-            varsler, månedlig oppsummering og oppsigelsesassistent. Betaling aktiveres først
-            når Vipps checkout er konfigurert.
+            Manuell abonnementssporing er gratis. Premium åpner for automatisk skanning, varsler,
+            månedlig oppsummering og oppsigelsesassistent.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             {user ? (
@@ -65,38 +61,31 @@ export default async function PricingPage() {
               name={billingPlans.premiumMonthly.name}
               price={billingPlans.premiumMonthly.priceLabel}
             >
-              <CheckoutButton paymentsConfigured={paymentsConfigured} plan="premium_monthly" />
+              <CheckoutButton label="Start Premium månedlig med Vipps" plan="premium_monthly" />
             </PlanCard>
             <PlanCard
-              badge="Beta/early price"
-              description="Årspris for tidlige brukere. Beta-brukere kan fortsatt gis tilgang manuelt av admin."
-              features={[...billingPlans.premiumYearlyBeta.features]}
-              name={billingPlans.premiumYearlyBeta.name}
-              price={billingPlans.premiumYearlyBeta.priceLabel}
+              description="For deg som vil ha Premium hele året til lavere månedspris."
+              features={[...billingPlans.premiumYearly.features]}
+              name={billingPlans.premiumYearly.name}
+              price={billingPlans.premiumYearly.priceLabel}
             >
-              {paymentsConfigured ? (
-                <CheckoutButton paymentsConfigured={paymentsConfigured} plan="premium_yearly_beta" />
-              ) : (
-                <Link
-                  className="mt-6 block rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-[#a90d27]"
-                  href="/pricing#beta"
-                >
-                  Be om beta-tilgang
-                </Link>
-              )}
+              <CheckoutButton label="Start Premium årlig med Vipps" plan="premium_yearly" />
             </PlanCard>
           </div>
 
-          <p className="mt-5 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 text-sm font-semibold leading-6 text-white/78">
-            Ingen bindingstid. Fast trekk kan stoppes ved å kontakte{" "}
-            <a
-              className="text-white underline decoration-white/35 underline-offset-4 hover:decoration-white"
-              href={`mailto:${siteConfig.contactEmail}`}
-            >
-              {siteConfig.contactEmail}
-            </a>
-            .
-          </p>
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 text-sm font-semibold leading-6 text-white/78">
+            <p>Premium aktiveres automatisk når betalingen er bekreftet av Vipps.</p>
+            <p className="mt-1">
+              Ingen bindingstid. Fast trekk kan stoppes ved å kontakte{" "}
+              <a
+                className="text-white underline decoration-white/35 underline-offset-4 hover:decoration-white"
+                href={`mailto:${siteConfig.contactEmail}`}
+              >
+                {siteConfig.contactEmail}
+              </a>
+              .
+            </p>
+          </div>
         </div>
       </section>
 
@@ -111,25 +100,9 @@ export default async function PricingPage() {
             text="Gmail-skanning, varsler, månedlig oppsummering og oppsigelsesassistent er premiumfunksjoner."
           />
           <InfoPanel
-            title="Betaling er scaffoldet"
-            text="Checkout starter først når Vipps payment-miljøvariabler er konfigurert. Ingen plan oppgraderes uten bekreftet betaling."
+            title="Vipps håndterer betaling"
+            text="Checkout oppretter en sikker Vipps-avtale. Premium aktiveres først når betalingen er bekreftet."
           />
-        </div>
-      </section>
-
-      <section className="bg-white px-5 py-14 text-[#0D1B2A]" id="beta">
-        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.8fr_1fr] lg:items-start">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Beta</p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Be om beta-tilgang</h2>
-            <p className="mt-4 text-sm leading-6 text-[#5F6F82]">
-              Vil du teste premiumfunksjoner før betaling er aktivert? Send en kort forespørsel,
-              så kan vi gi beta-tilgang manuelt fra admin.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-[#F0F4F8] p-5 ring-1 ring-[#DBE4EE]">
-            <BetaRequestForm />
-          </div>
         </div>
       </section>
 
@@ -140,7 +113,10 @@ export default async function PricingPage() {
 
 function PrimaryLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link className="rounded-xl bg-[#C8102E] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#a90d27]" href={href}>
+    <Link
+      className="rounded-xl bg-[#C8102E] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#a90d27]"
+      href={href}
+    >
       {children}
     </Link>
   );
@@ -148,7 +124,10 @@ function PrimaryLink({ href, children }: { href: string; children: ReactNode }) 
 
 function SecondaryLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link className="rounded-xl border border-white/15 px-5 py-3.5 text-center text-sm font-bold text-white transition hover:border-white/30 hover:bg-white/[0.06]" href={href}>
+    <Link
+      className="rounded-xl border border-white/15 px-5 py-3.5 text-center text-sm font-bold text-white transition hover:border-white/30 hover:bg-white/[0.06]"
+      href={href}
+    >
       {children}
     </Link>
   );
@@ -160,7 +139,6 @@ function PlanCard({
   description,
   features,
   highlighted,
-  badge,
   children,
 }: {
   name: string;
@@ -168,7 +146,6 @@ function PlanCard({
   description: string;
   features: string[];
   highlighted?: boolean;
-  badge?: string;
   children: ReactNode;
 }) {
   return (
@@ -177,10 +154,7 @@ function PlanCard({
         highlighted ? "bg-[#C8102E] text-white ring-[#C8102E]" : "bg-white/[0.06] text-white ring-white/10"
       }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-white/70">{name}</p>
-        {badge ? <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{badge}</span> : null}
-      </div>
+      <p className="text-sm font-semibold text-white/70">{name}</p>
       <p className="mt-3 text-3xl font-black">{price}</p>
       <p className="mt-3 min-h-16 text-sm leading-6 text-white/70">{description}</p>
       <ul className="mt-6 grid gap-2 text-sm font-semibold">

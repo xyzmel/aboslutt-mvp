@@ -36,9 +36,11 @@ export default function ContactPage() {
       <section className="rounded-2xl bg-[#F0F4F8] p-5">
         <h2 className="text-lg font-bold text-[#0D1B2A]">Pris</h2>
         <p className="mt-2">MVP/Beta: Gratis</p>
-        <p>Premium månedlig: 29 kr/mnd</p>
-        <p>Premium årlig beta-pris: 99 kr/år</p>
-        <p className="mt-2 text-sm text-[#5F6F82]">Betaling aktiveres først når checkout er konfigurert.</p>
+        <p>Premium månedlig: 79 kr/mnd</p>
+        <p>Premium årlig: 499 kr/år</p>
+        <p className="mt-2 text-sm text-[#5F6F82]">
+          Premium aktiveres automatisk når betalingen er bekreftet av Vipps.
+        </p>
       </section>
 
       <Link
