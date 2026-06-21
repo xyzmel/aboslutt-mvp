@@ -276,7 +276,7 @@ export default function EmailImportPage() {
               ) : null}
               {!gmailScanAvailable ? (
                 <p className="mt-2 rounded-xl bg-[#FFF6E8] px-3 py-2 text-xs font-semibold text-[#8A4B13]">
-                  Automatisk skanning er en beta/premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.
+                  Automatisk skanning er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.
                 </p>
               ) : null}
               <p className="mt-3 text-xs font-semibold text-[#C8102E]">
@@ -287,9 +287,9 @@ export default function EmailImportPage() {
               {!gmailScanAvailable ? (
                 <Link
                   className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white hover:bg-[#a90d27]"
-                  href="/pricing#beta"
+                  href="/pricing"
                 >
-                  Be om beta
+                  Se Premium
                 </Link>
               ) : !gmailScopeConnected ? (
                 <button

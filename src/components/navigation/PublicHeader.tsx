@@ -46,10 +46,7 @@ export function PublicHeader({ maxWidthClassName = "max-w-6xl" }: { maxWidthClas
   }, [status]);
 
   const user = safeUser ?? session?.user ?? null;
-  const links = useMemo(
-    () => buildPublicLinks(pathname, Boolean(user)),
-    [pathname, user],
-  );
+  const links = useMemo(() => buildPublicLinks(pathname, Boolean(user)), [pathname, user]);
 
   return (
     <header className="px-5 py-5 text-white">

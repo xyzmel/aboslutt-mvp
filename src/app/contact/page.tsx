@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/site-config";
 export default function ContactPage() {
   return (
     <PublicPageShell
-      intro="Ta kontakt om demo, personvern, tilgang eller spørsmål om Aboslutt."
+      intro="Ta kontakt om Aboslutt, betaling, personvern eller hjelp til å komme i gang."
       title="Kontakt"
     >
       <section>
@@ -26,16 +26,16 @@ export default function ContactPage() {
       <section>
         <h2 className="text-lg font-bold text-[#0D1B2A]">Hva du kan spørre om</h2>
         <ul className="mt-2 list-disc space-y-2 pl-5">
-          <li>Tilgang til offentlig demo eller lokal testing.</li>
-          <li>Personvern og sletting av data.</li>
-          <li>Feil i abonnementskandidater eller Gmail-skanning.</li>
-          <li>Planer for Vipps, e-postinnlogging og fremtidige integrasjoner.</li>
+          <li>Hjelp til å få oversikt over abonnementer.</li>
+          <li>Premium, Vipps-betaling og faste trekk.</li>
+          <li>Personvern, Gmail-skanning og sletting av data.</li>
+          <li>Feil i abonnementskandidater eller import fra e-post.</li>
         </ul>
       </section>
 
       <section className="rounded-2xl bg-[#F0F4F8] p-5">
         <h2 className="text-lg font-bold text-[#0D1B2A]">Pris</h2>
-        <p className="mt-2">MVP/Beta: Gratis</p>
+        <p className="mt-2">Gratis: 0 kr</p>
         <p>Premium månedlig: 79 kr/mnd</p>
         <p>Premium årlig: 499 kr/år</p>
         <p className="mt-2 text-sm text-[#5F6F82]">

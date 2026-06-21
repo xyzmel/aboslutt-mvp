@@ -47,7 +47,7 @@ export function AppFooter({ compact = false }: { compact?: boolean }) {
             </span>
           </Link>
           <p className="mt-4 max-w-xs leading-6">
-            Få kontroll på abonnementene dine. Start manuelt, automatiser når du vil.
+            Få kontroll på abonnementene dine. Oppdag hva du betaler for, og kutt det du ikke trenger.
           </p>
           <div className="mt-5 leading-6">
             <p className="font-semibold text-white">{siteConfig.companyName}</p>
@@ -91,10 +91,11 @@ export function AppFooter({ compact = false }: { compact?: boolean }) {
 
         <FooterColumn
           links={[
-            ["Be om beta-tilgang", "/pricing#beta"],
+            ["Start gratis", isLoggedIn ? "/dashboard" : "/register"],
+            ["Se Premium", "/pricing"],
             ["Gi tilbakemelding", isLoggedIn ? "/dashboard" : "/contact"],
           ]}
-          title="Beta"
+          title="Kom i gang"
         />
       </div>
     </footer>

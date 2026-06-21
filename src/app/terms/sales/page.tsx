@@ -6,7 +6,7 @@ import { siteConfig } from "@/lib/site-config";
 export default function SalesTermsPage() {
   return (
     <PublicPageShell
-      intro="Salgsbetingelser for kjøp av digitale abonnementstjenester i Aboslutt. Dette er et praktisk utkast og ikke juridisk rådgivning."
+      intro="Salgsbetingelser for kjøp av digitale abonnementstjenester i Aboslutt."
       title="Salgsbetingelser"
     >
       <TermsSection title="Parter">

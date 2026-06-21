@@ -8,6 +8,13 @@ import { authOptions } from "@/lib/auth";
 import { billingPlans } from "@/lib/billing/plans";
 import { siteConfig } from "@/lib/site-config";
 
+const valuePoints = [
+  "Start gratis med manuell oversikt",
+  "Ingen bindingstid",
+  "Avslutt når du vil",
+  "Premium aktiveres når Vipps bekrefter betalingen",
+];
+
 export default async function PricingPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user ? { email: session.user.email ?? null } : null;
@@ -18,32 +25,43 @@ export default async function PricingPage() {
 
       <section className="px-5 py-14">
         <div className="mx-auto max-w-6xl">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Priser</p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-            Start gratis. Oppgrader når du vil automatisere.
-          </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-white/68">
-            Manuell abonnementssporing er gratis. Premium åpner for automatisk skanning, varsler,
-            månedlig oppsummering og oppsigelsesassistent.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            {user ? (
-              <>
-                <PrimaryLink href="/dashboard">Gå til oversikt</PrimaryLink>
-                <SecondaryLink href="/import/email">Importer e-post</SecondaryLink>
-              </>
-            ) : (
-              <>
-                <PrimaryLink href="/register">Start gratis</PrimaryLink>
-                <SecondaryLink href="/login">Logg inn</SecondaryLink>
-              </>
-            )}
+          <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-end">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Priser</p>
+              <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+                Velg oversikten som passer deg.
+              </h1>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-white/70">
+                Kom i gang gratis med manuell abonnementskontroll. Oppgrader til Premium når du vil ha automatisk
+                skanning, varsler, månedlig oppsummering og enklere oppsigelser.
+              </p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                {user ? (
+                  <PrimaryLink href="/dashboard">Gå til oversikt</PrimaryLink>
+                ) : (
+                  <PrimaryLink href="/register">Start gratis</PrimaryLink>
+                )}
+                <SecondaryLink href="/terms/sales">Se salgsbetingelser</SecondaryLink>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5">
+              <p className="text-sm font-extrabold text-white">Trygt å komme i gang</p>
+              <div className="mt-4 grid gap-3">
+                {valuePoints.map((point) => (
+                  <div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3" key={point}>
+                    <span className="text-sm font-black text-[#C8102E]">✓</span>
+                    <p className="text-sm font-semibold text-white/78">{point}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="mt-10 grid gap-5 lg:grid-cols-3">
             <PlanCard
-              description="For deg som vil ha kontroll manuelt uten integrasjoner."
-              features={[...billingPlans.free.features]}
+              description="For deg som vil samle abonnementene manuelt og få kontroll uten å koble til Gmail."
+              features={[...billingPlans.free.features, "Ingen Gmail kreves"]}
               name={billingPlans.free.name}
               price={billingPlans.free.priceLabel}
             >
@@ -54,8 +72,9 @@ export default async function PricingPage() {
                 Start gratis
               </Link>
             </PlanCard>
+
             <PlanCard
-              description="For deg som vil bruke automatisk skanning, varsler og oppsigelsesassistent."
+              description="For deg som vil automatisere oversikten og få hjelp før kostnadene løper videre."
               features={[...billingPlans.premiumMonthly.features]}
               highlighted
               name={billingPlans.premiumMonthly.name}
@@ -63,9 +82,11 @@ export default async function PricingPage() {
             >
               <CheckoutButton label="Start Premium månedlig med Vipps" plan="premium_monthly" />
             </PlanCard>
+
             <PlanCard
-              description="For deg som vil ha Premium hele året til lavere månedspris."
-              features={[...billingPlans.premiumYearly.features]}
+              badge="Best verdi"
+              description="For deg som vil bruke Premium gjennom året og betale mindre per måned."
+              features={[...billingPlans.premiumYearly.features, "Spar 449 kr mot månedlig pris"]}
               name={billingPlans.premiumYearly.name}
               price={billingPlans.premiumYearly.priceLabel}
             >
@@ -89,19 +110,19 @@ export default async function PricingPage() {
         </div>
       </section>
 
-      <section className="bg-[#F0F4F8] px-5 py-12 text-[#0D1B2A]">
+      <section className="bg-white px-5 py-14 text-[#0D1B2A]">
         <div className="mx-auto grid max-w-6xl gap-5 md:grid-cols-3">
           <InfoPanel
-            title="Gratis er manuelt"
-            text="Alle kan starte med å legge inn abonnementer selv. Du trenger ikke Gmail for å bruke Aboslutt."
+            title="Gratis er en sterk start"
+            text="Legg inn abonnementene du kjenner, se kostnadene og få kontroll uten å betale først."
           />
           <InfoPanel
-            title="Premium er automasjon"
-            text="Gmail-skanning, varsler, månedlig oppsummering og oppsigelsesassistent er premiumfunksjoner."
+            title="Premium sparer tid"
+            text="Automatisk skanning og varsler hjelper deg å oppdage faste trekk før de blir glemt."
           />
           <InfoPanel
             title="Vipps håndterer betaling"
-            text="Checkout oppretter en sikker Vipps-avtale. Premium aktiveres først når betalingen er bekreftet."
+            text="Betalingen skjer trygt med Vipps. Aboslutt aktiverer Premium først etter bekreftet betaling."
           />
         </div>
       </section>
@@ -139,6 +160,7 @@ function PlanCard({
   description,
   features,
   highlighted,
+  badge,
   children,
 }: {
   name: string;
@@ -146,6 +168,7 @@ function PlanCard({
   description: string;
   features: string[];
   highlighted?: boolean;
+  badge?: string;
   children: ReactNode;
 }) {
   return (
@@ -154,9 +177,12 @@ function PlanCard({
         highlighted ? "bg-[#C8102E] text-white ring-[#C8102E]" : "bg-white/[0.06] text-white ring-white/10"
       }`}
     >
-      <p className="text-sm font-semibold text-white/70">{name}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-white/70">{name}</p>
+        {badge ? <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{badge}</span> : null}
+      </div>
       <p className="mt-3 text-3xl font-black">{price}</p>
-      <p className="mt-3 min-h-16 text-sm leading-6 text-white/70">{description}</p>
+      <p className="mt-3 min-h-20 text-sm leading-6 text-white/70">{description}</p>
       <ul className="mt-6 grid gap-2 text-sm font-semibold">
         {features.map((feature) => (
           <li key={feature}>✓ {feature}</li>
@@ -169,7 +195,7 @@ function PlanCard({
 
 function InfoPanel({ title, text }: { title: string; text: string }) {
   return (
-    <article className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+    <article className="rounded-2xl bg-[#F0F4F8] p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <h2 className="text-lg font-extrabold tracking-tight">{title}</h2>
       <p className="mt-3 text-sm leading-6 text-[#5F6F82]">{text}</p>
     </article>

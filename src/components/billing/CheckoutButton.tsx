@@ -19,7 +19,6 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
       });
       const result = (await response.json().catch(() => ({}))) as {
         error?: string;
-        message?: string;
         redirectUrl?: string;
       };
 

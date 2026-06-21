@@ -1,43 +1,46 @@
+import Link from "next/link";
 import { PublicPageShell } from "@/components/public/PublicPageShell";
 import { siteConfig } from "@/lib/site-config";
 
 export default function TermsPage() {
   return (
-    <PublicPageShell
-      intro="Disse vilkårene gjelder for bruk av Aboslutt som offentlig MVP/beta."
-      title="Vilkår"
-    >
+    <PublicPageShell intro="Disse vilkårene gjelder for bruk av Aboslutt." title="Vilkår">
       <section>
         <h2 className="text-lg font-bold text-[#0D1B2A]">Tjenesten</h2>
         <p className="mt-2">
-          Aboslutt er en abonnementoversikt som hjelper deg å finne og organisere
-          mulige abonnementer. Tjenesten er under utvikling og tilbys som MVP/beta.
+          Aboslutt er en abonnementoversikt som hjelper deg å samle abonnementer, følge med på kostnader
+          og få bedre kontroll på kommende trekk.
         </p>
       </section>
 
       <section>
         <h2 className="text-lg font-bold text-[#0D1B2A]">Brukeransvar</h2>
         <p className="mt-2">
-          Du er ansvarlig for å kontrollere forslag før du lagrer dem. Aboslutt
-          kan vise feil eller ufullstendige abonnementskandidater, spesielt fra
-          e-postkvitteringer som varierer i format.
+          Du er ansvarlig for å kontrollere forslag før du lagrer dem. Aboslutt kan vise feil eller
+          ufullstendige abonnementskandidater, spesielt fra e-postkvitteringer som varierer i format.
         </p>
       </section>
 
       <section>
         <h2 className="text-lg font-bold text-[#0D1B2A]">Ingen automatisk oppsigelse</h2>
         <p className="mt-2">
-          MVP-en avslutter ikke abonnementer hos eksterne leverandører. Når du
-          markerer noe som avsluttet i Aboslutt, gjelder det bare statusen i din
-          lokale oversikt.
+          Aboslutt avslutter ikke abonnementer hos eksterne leverandører automatisk. Når du markerer noe
+          som avsluttet i Aboslutt, gjelder det statusen i din egen oversikt.
         </p>
       </section>
 
       <section>
-        <h2 className="text-lg font-bold text-[#0D1B2A]">Pris</h2>
+        <h2 className="text-lg font-bold text-[#0D1B2A]">Pris og betaling</h2>
         <p className="mt-2">
-          MVP/beta er gratis. Fremtidige betalte planer kan komme senere, men vil
-          bli presentert tydelig før eventuell betaling.
+          Gratis-planen kan brukes uten betaling. Premium-priser og betalingsvilkår finner du på{" "}
+          <Link className="font-semibold text-[#C8102E]" href="/pricing">
+            prissiden
+          </Link>{" "}
+          og i{" "}
+          <Link className="font-semibold text-[#C8102E]" href="/terms/sales">
+            salgsbetingelsene
+          </Link>
+          .
         </p>
       </section>
 

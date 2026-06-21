@@ -74,7 +74,7 @@ export function getInitials(name?: string | null, email?: string | null) {
 function formatPlan(plan?: string | null) {
   const labels: Record<string, string> = {
     free: "Gratis",
-    beta: "Beta",
+    beta: "Premium",
     premium: "Premium",
     admin: "Admin",
   };
