@@ -1,8 +1,7 @@
 "use client";
 
-import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from "react";
+import { Dispatch, FormEvent, MouseEvent, SetStateAction, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import { ConfirmCancellation } from "@/components/cancellation/ConfirmCancellation";
 import { SuccessScreen } from "@/components/cancellation/SuccessScreen";
 import { SubscriptionCard } from "@/components/dashboard/SubscriptionCard";
@@ -10,6 +9,7 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
 import { PlanStatusCard } from "@/components/plans/PlanStatusCard";
+import { trackFunnelEvent } from "@/lib/analytics";
 import { getCancellationStatusLabel } from "@/lib/cancellation";
 import {
   formatDateForShortDisplay,
@@ -80,7 +80,6 @@ const billingIntervalOptions: [BillingInterval, string][] = [
 ];
 
 export function DashboardClient() {
-  const { data: session } = useSession();
   const [subscriptionList, setSubscriptionList] = useState<Subscription[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>("all");
@@ -97,6 +96,7 @@ export function DashboardClient() {
   const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
   const [hasGoogleGmailConnected, setHasGoogleGmailConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadSubscriptions() {
@@ -173,7 +173,18 @@ export function DashboardClient() {
     !emailRemindersEnabled ||
     !hasGoogleGmailConnected ||
     totalMonthlyCost <= 0;
-  const isDevelopment = process.env.NODE_ENV !== "production";
+  const shouldShowUpgradePrompt = currentPlan === "free";
+
+  function explainPremiumFeature(event: MouseEvent<HTMLAnchorElement>) {
+    if (!shouldShowUpgradePrompt) {
+      return;
+    }
+
+    event.preventDefault();
+    setUpgradeMessage(
+      "Automatisk e-postimport er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.",
+    );
+  }
 
   function toggleSubscription(id: string) {
     setSelectedIds((currentIds) =>
@@ -216,7 +227,14 @@ export function DashboardClient() {
       }
 
       const subscription = (await response.json()) as Subscription;
+      const isFirstSubscription = subscriptionList.length === 0;
       setSubscriptionList((currentSubscriptions) => [...currentSubscriptions, subscription]);
+      if (isFirstSubscription) {
+        trackFunnelEvent("first_subscription_added", {
+          category: subscription.category,
+          billingInterval: subscription.billingInterval ?? "unknown",
+        });
+      }
       setForm(defaultForm);
     } catch {
       setErrorMessage("Kunne ikke legge til abonnementet.");
@@ -381,6 +399,27 @@ export function DashboardClient() {
             {errorMessage}
           </div>
         ) : null}
+        {upgradeMessage ? (
+          <div className="mb-5 rounded-2xl border border-[#DBE4EE] bg-white p-4 text-sm text-[#0D1B2A] shadow-sm">
+            <p className="font-bold">Premium gir automatisk import</p>
+            <p className="mt-1 text-[#5F6F82]">{upgradeMessage}</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Link
+                className="rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-[#a90d27]"
+                href="/pricing"
+              >
+                Se Premium
+              </Link>
+              <button
+                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                onClick={() => setUpgradeMessage(null)}
+                type="button"
+              >
+                Fortsett gratis
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {step === "confirm" ? (
           <ConfirmCancellation
@@ -404,7 +443,7 @@ export function DashboardClient() {
             <div className="rounded-3xl border border-[#DBE4EE] bg-white/82 p-4 shadow-sm shadow-slate-200/70 sm:p-5 lg:flex lg:items-end lg:justify-between lg:gap-6">
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">
-                  {isDevelopment && !session ? "Lokal utvikling" : "Oversikt"}
+                  Oversikt
                 </p>
                 <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
                   Abonnementene dine
@@ -423,6 +462,7 @@ export function DashboardClient() {
                 <Link
                   className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-center text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
                   href="/import/email"
+                  onClick={explainPremiumFeature}
                 >
                   Importer fra e-post
                 </Link>
@@ -529,6 +569,7 @@ export function DashboardClient() {
                   <Link
                     className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
                     href="/import/email"
+                    onClick={explainPremiumFeature}
                   >
                     Skann Gmail
                   </Link>
@@ -777,6 +818,12 @@ function UpcomingPayments({ subscriptions }: { subscriptions: UpcomingPayment[] 
           <p className="mt-2 leading-6">
             Legg inn neste trekk på abonnementene dine for å få bedre varsling og en mer nyttig tidslinje.
           </p>
+          <a
+            className="mt-4 inline-flex rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#0D1B2A] ring-1 ring-[#DBE4EE] hover:ring-[#C8102E]/40"
+            href="#manual-add"
+          >
+            Legg inn neste trekk
+          </a>
         </div>
       )}
     </section>
@@ -886,6 +933,14 @@ function SavingsInsight({
           <p className="mt-2 text-sm leading-6 text-white/68">
             Velg abonnementer i listen for å se hva du kan spare hvis de avsluttes.
           </p>
+          {selectedCount === 0 ? (
+            <a
+              className="mt-4 inline-flex w-fit rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:bg-white/90"
+              href="#manual-add"
+            >
+              Legg til eller velg abonnement
+            </a>
+          ) : null}
         </div>
         <div className="grid gap-3 p-5 sm:grid-cols-2">
           <div className="rounded-2xl bg-[#F7F9FC] p-4 ring-1 ring-[#DBE4EE]">
@@ -1004,10 +1059,6 @@ function getSourceLabel(source?: string | null) {
 
   if (source === "vipps") {
     return "Vipps";
-  }
-
-  if (source === "demo" && process.env.NODE_ENV !== "production") {
-    return "Demo";
   }
 
   return "Manuell";

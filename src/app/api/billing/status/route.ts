@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
-import { getAgreement, isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
+import { reconcileBillingAgreementById } from "@/lib/billing/reconcile";
+import { isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+
+type PublicBillingStatus = "pending" | "active" | "cancelled" | "expired" | "failed" | "none";
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -13,114 +17,84 @@ export async function GET() {
   const agreement = await prisma.billingAgreement.findFirst({
     where: {
       userId: currentUser.id,
-      status: "pending",
     },
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      providerAgreementId: true,
-      reference: true,
-      plan: true,
-      status: true,
-      priceNok: true,
-      interval: true,
-      activatedAt: true,
-      createdAt: true,
+    include: {
+      user: { select: { email: true, name: true } },
     },
   });
 
   if (!agreement) {
     return NextResponse.json({
       ok: true,
-      status: "none",
+      status: "none" satisfies PublicBillingStatus,
       plan: currentUser.plan,
+      billingAgreement: null,
     });
   }
 
-  if (!agreement.providerAgreementId) {
+  if (agreement.status !== "pending" || !agreement.providerAgreementId || !isVippsRecurringConfigured()) {
     return NextResponse.json({
       ok: true,
-      status: agreement.status,
+      status: normalizePublicStatus(agreement.status),
       plan: currentUser.plan,
+      paymentsConfigured: isVippsRecurringConfigured(),
       billingAgreement: safeAgreement(agreement),
     });
   }
 
-  if (!isVippsRecurringConfigured()) {
+  try {
+    const reconciliation = await reconcileBillingAgreementById(agreement.id);
+    const updatedAgreement =
+      (await prisma.billingAgreement.findUnique({ where: { id: agreement.id } })) ?? agreement;
+
     return NextResponse.json({
       ok: true,
-      status: agreement.status,
+      status: normalizePublicStatus(updatedAgreement.status),
+      plan: updatedAgreement.status === "active" ? "premium" : currentUser.plan,
+      vippsStatus: reconciliation.vippsStatus,
+      verification: reconciliation.ok ? "checked" : "unavailable",
+      billingAgreement: safeAgreement(updatedAgreement),
+    });
+  } catch (error) {
+    logger.error("[billing:status]", {
+      error,
+      reference: agreement.reference,
+      agreementStatus: agreement.status,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      status: "pending" satisfies PublicBillingStatus,
       plan: currentUser.plan,
       billingAgreement: safeAgreement(agreement),
-      paymentsConfigured: false,
+      verification: "unavailable",
     });
   }
-
-  const vippsAgreement = await getAgreement(agreement.providerAgreementId);
-  const vippsStatus = getVippsStatus(vippsAgreement);
-
-  if (vippsStatus === "ACTIVE") {
-    const now = new Date();
-
-    await prisma.$transaction([
-      prisma.billingAgreement.update({
-        where: { id: agreement.id },
-        data: {
-          status: "active",
-          activatedAt: agreement.activatedAt ?? now,
-          cancelledAt: null,
-        },
-      }),
-      prisma.user.update({
-        where: { id: currentUser.id },
-        data: { plan: "premium" },
-      }),
-    ]);
-
-    return NextResponse.json({
-      ok: true,
-      status: "active",
-      plan: "premium",
-      billingAgreement: { ...safeAgreement(agreement), status: "active" },
-    });
-  }
-
-  if (vippsStatus === "STOPPED" || vippsStatus === "EXPIRED") {
-    const status = vippsStatus === "EXPIRED" ? "expired" : "cancelled";
-
-    await prisma.billingAgreement.update({
-      where: { id: agreement.id },
-      data: {
-        status,
-        cancelledAt: new Date(),
-      },
-    });
-
-    return NextResponse.json({
-      ok: true,
-      status,
-      plan: currentUser.plan,
-      billingAgreement: { ...safeAgreement(agreement), status },
-    });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    status: agreement.status,
-    plan: currentUser.plan,
-    vippsStatus,
-    billingAgreement: safeAgreement(agreement),
-  });
 }
 
-function getVippsStatus(payload: unknown) {
-  if (typeof payload === "object" && payload !== null && "status" in payload) {
-    const status = (payload as { status?: unknown }).status;
-
-    return typeof status === "string" ? status : null;
+function normalizePublicStatus(status: string): PublicBillingStatus {
+  if (status === "active") {
+    return "active";
   }
 
-  return null;
+  if (status === "pending" || status === "cancellation_pending") {
+    return "pending";
+  }
+
+  if (status === "cancelled" || status === "terminated") {
+    return "cancelled";
+  }
+
+  if (status === "expired") {
+    return "expired";
+  }
+
+  if (status === "failed" || status === "aborted") {
+    return "failed";
+  }
+
+  return "failed";
 }
 
 function safeAgreement(agreement: {
@@ -129,14 +103,25 @@ function safeAgreement(agreement: {
   status: string;
   priceNok: number;
   interval: string;
+  currency: string;
+  activatedAt: Date | null;
+  cancelledAt: Date | null;
+  expiresAt: Date | null;
   createdAt: Date;
+  updatedAt: Date;
 }) {
   return {
     reference: agreement.reference,
     plan: agreement.plan,
-    status: agreement.status,
+    status: normalizePublicStatus(agreement.status),
+    localStatus: agreement.status,
     priceNok: agreement.priceNok,
+    currency: agreement.currency,
     interval: agreement.interval,
+    activatedAt: agreement.activatedAt?.toISOString() ?? null,
+    cancelledAt: agreement.cancelledAt?.toISOString() ?? null,
+    expiresAt: agreement.expiresAt?.toISOString() ?? null,
     createdAt: agreement.createdAt.toISOString(),
+    updatedAt: agreement.updatedAt.toISOString(),
   };
 }

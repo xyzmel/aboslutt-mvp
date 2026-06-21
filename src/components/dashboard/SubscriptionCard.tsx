@@ -186,13 +186,6 @@ function getSourceBadge(source?: string | null): { label: string; tone: "neutral
     };
   }
 
-  if (source === "demo" && process.env.NODE_ENV !== "production") {
-    return {
-      label: "Demo",
-      tone: "neutral",
-    };
-  }
-
   return {
     label: "Manuell",
     tone: "green",

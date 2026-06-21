@@ -1,10 +1,15 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { getCurrentAppUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Kom i gang | Aboslutt",
+  robots: { index: false, follow: false },
+};
 
 export default async function OnboardingPage() {
   const currentUser = await getCurrentAppUser();
@@ -27,6 +32,18 @@ export default async function OnboardingPage() {
           abonnementene dine manuelt først, og bruk Gmail-skanning senere hvis du
           vil la Aboslutt foreslå flere kandidater automatisk.
         </p>
+
+        <div className="mt-6 max-w-2xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE]">
+          <div className="flex items-center justify-between gap-4 text-sm font-bold">
+            <span>3 korte steg</span>
+            <Link className="text-[#C8102E] hover:underline" href="/dashboard?start=manual">
+              Hopp over
+            </Link>
+          </div>
+          <div className="mt-3 h-2 rounded-full bg-[#E6EDF5]">
+            <div className="h-2 w-1/3 rounded-full bg-[#C8102E]" />
+          </div>
+        </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <OnboardingCard

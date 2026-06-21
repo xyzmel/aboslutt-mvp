@@ -7,7 +7,9 @@ import {
   type VippsRecurringAgreementPlan,
 } from "@/lib/billing/vipps-recurring";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { trackServerFunnelEvent } from "@/lib/server-analytics";
 
 const checkoutPlans = {
   premium_monthly: {
@@ -45,8 +47,14 @@ export async function POST(request: Request) {
 
   const reference = createBillingReference();
 
+  logger.info("[billing:checkout:started]", {
+    reference,
+    plan: plan.id,
+    userId: currentUser.id,
+  });
+
   if (!isVippsRecurringConfigured()) {
-    console.error("[billing:checkout]", {
+    logger.error("[billing:checkout]", {
       error: "PAYMENTS_NOT_CONFIGURED",
       reference,
       plan: plan.id,
@@ -73,6 +81,13 @@ export async function POST(request: Request) {
     },
   });
 
+  logger.info("[billing:agreement:created]", {
+    reference,
+    agreementId: billingAgreement.id,
+    status: billingAgreement.status,
+    plan: plan.id,
+  });
+
   try {
     const vippsAgreement = await createAgreement({
       user: currentUser,
@@ -93,6 +108,11 @@ export async function POST(request: Request) {
       redirectUrl: vippsAgreement.vippsConfirmationUrl,
     });
   } catch (error) {
+    trackServerFunnelEvent("checkout_failed", {
+      plan: plan.id,
+      reason: error instanceof VippsRecurringError ? error.code : "INTERNAL_ERROR",
+    });
+
     await prisma.billingAgreement.update({
       where: { id: billingAgreement.id },
       data: { status: "failed" },
@@ -151,7 +171,7 @@ function getSafeVippsRecurringConfigStatus() {
 
 function logCheckoutError(error: unknown, reference: string, plan: CheckoutPlanId) {
   if (error instanceof VippsRecurringError) {
-    console.error("[billing:checkout]", {
+    logger.error("[billing:checkout]", {
       error: error.code,
       status: error.status,
       vippsCode: error.vippsCode,
@@ -162,7 +182,7 @@ function logCheckoutError(error: unknown, reference: string, plan: CheckoutPlanI
     return;
   }
 
-  console.error("[billing:checkout]", {
+  logger.error("[billing:checkout]", {
     error: error instanceof Error ? error.name : "UnknownError",
     message: error instanceof Error ? error.message : "Unknown checkout error",
     reference,

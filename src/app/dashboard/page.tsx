@@ -1,16 +1,20 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import { getCurrentAppUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
 
 type DashboardPageProps = {
   searchParams: Promise<{ start?: string }>;
 };
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Oversikt | Aboslutt",
+  robots: { index: false, follow: false },
+};
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const params = await searchParams;
+  await searchParams;
   let currentUser;
 
   try {
@@ -22,21 +26,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   if (!currentUser) {
     redirect("/login");
-  }
-
-  let subscriptionCount = 0;
-
-  try {
-    subscriptionCount = await prisma.subscription.count({
-      where: { userId: currentUser.id },
-    });
-  } catch (error) {
-    logServerError("dashboard:subscriptionCount", error, currentUser.id);
-    return <DashboardLoadError />;
-  }
-
-  if (subscriptionCount === 0 && params.start !== "manual") {
-    redirect("/onboarding");
   }
 
   return <DashboardClient />;

@@ -420,10 +420,6 @@ function formatSource(source: string | null) {
     return "Vipps";
   }
 
-  if (source === "demo" && process.env.NODE_ENV !== "production") {
-    return "Demo";
-  }
-
   return "Manuell";
 }
 

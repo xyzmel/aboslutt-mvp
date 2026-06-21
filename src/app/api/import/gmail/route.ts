@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     if (!canUseGmailScan(currentUser)) {
       throw new GmailImportError(
         "PLAN_REQUIRED",
-        "Automatisk skanning er en beta/premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.",
+        "Automatisk skanning er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.",
         403,
       );
     }

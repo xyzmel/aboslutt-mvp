@@ -30,14 +30,14 @@ export function BetaRequestForm() {
       const result = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
 
       if (!response.ok) {
-        throw new Error(result.message ?? "Kunne ikke sende beta-forespørselen.");
+        throw new Error(result.message ?? "Kunne ikke sende forespørselen.");
       }
 
       setIsSuccess(true);
       setMessage(result.message ?? "Takk! Vi har mottatt forespørselen din.");
       setForm(defaultForm);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke sende beta-forespørselen.");
+      setMessage(error instanceof Error ? error.message : "Kunne ikke sende forespørselen.");
     } finally {
       setIsSubmitting(false);
     }
@@ -69,7 +69,7 @@ export function BetaRequestForm() {
         />
       </label>
       <label className="text-sm font-semibold text-[#4A5568]">
-        Hvorfor vil du teste Aboslutt?
+        Hva kan vi hjelpe deg med?
         <textarea
           className="mt-2 min-h-28 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
           maxLength={1200}
@@ -83,7 +83,7 @@ export function BetaRequestForm() {
         disabled={isSubmitting}
         type="submit"
       >
-        {isSubmitting ? "Sender..." : "Be om beta-tilgang"}
+        {isSubmitting ? "Sender..." : "Kontakt oss"}
       </button>
       {message ? (
         <p

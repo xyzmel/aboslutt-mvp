@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/error-boundaries */
 import Link from "next/link";
+import type { Metadata } from "next";
 import { AdminBetaRequestActions, AdminFeedbackActions } from "@/components/admin/AdminReviewActions";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { AdminForbiddenError, requireAdminUser } from "@/lib/admin";
@@ -9,6 +10,10 @@ import { prisma } from "@/lib/prisma";
 import { isSmtpConfigured } from "@/lib/smtp";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Admin | Aboslutt",
+  robots: { index: false, follow: false },
+};
 
 export default async function AdminPage() {
   let adminUser;

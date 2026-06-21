@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { FunnelEvent } from "@/components/analytics/FunnelEvent";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
 
@@ -68,6 +69,7 @@ export function LandingScreen({ user }: LandingScreenProps) {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#0D1B2A] text-white">
+      <FunnelEvent event="landing_page_viewed" />
       <section className="px-5 pb-16 pt-6">
         <div className="mx-auto w-full max-w-6xl">
           <PublicHeader />

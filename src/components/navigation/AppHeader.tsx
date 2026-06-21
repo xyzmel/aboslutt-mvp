@@ -101,6 +101,7 @@ function buildAppLinks(pathname: string, adminSection: boolean): NavigationLink[
 
   const adminLinks: NavigationLink[] = [
     { href: "/admin", label: "Produktoversikt" },
+    { href: "/admin/billing", label: "Billing" },
     { href: "/admin/providers", label: "Leverandører" },
     { href: "/admin/jobs", label: "Jobber" },
     { href: "/admin/audit", label: "Audit" },

@@ -371,9 +371,5 @@ function getSourceLabel(source?: string | null) {
     return "Google";
   }
 
-  if (source === "demo" && process.env.NODE_ENV !== "production") {
-    return "Demo";
-  }
-
   return "Manuell";
 }

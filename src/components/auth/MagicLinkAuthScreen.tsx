@@ -6,6 +6,8 @@ import Link from "next/link";
 import { getProviders, signIn } from "next-auth/react";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { trackFunnelEvent } from "@/lib/analytics";
+import { siteConfig } from "@/lib/site-config";
 
 const vippsLoginButtonAsset = "/vipps-login-pill-default.svg";
 
@@ -49,6 +51,12 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
   const title = isRegister ? "Opprett konto" : "Logg inn";
 
   useEffect(() => {
+    if (isRegister) {
+      trackFunnelEvent("registration_started");
+    }
+  }, [isRegister]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadProviders() {
@@ -84,7 +92,11 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       await loginUser();
     } catch (error) {
       setRequestState("error");
-      setMessage(error instanceof Error ? error.message : "Noe gikk galt. Prøv igjen.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : `Noe gikk galt. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`,
+      );
     }
   }
 
@@ -102,6 +114,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
 
     setRequestState("success");
     setMessage(result.message ?? "Kontoen er opprettet. Sjekk e-posten din.");
+    trackFunnelEvent("registration_completed", { method: "email_password" });
     setForm(defaultForm);
   }
 
@@ -216,15 +229,20 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
           </form>
 
           {message ? (
-            <p
+            <div
               className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${
                 requestState === "success"
                   ? "bg-emerald-50 text-emerald-700"
                   : "bg-[#F5E6E9] text-[#C8102E]"
               }`}
             >
-              {message}
-            </p>
+              <p>{message}</p>
+              {requestState === "success" && isRegister ? (
+                <Link className="mt-2 inline-flex font-bold underline underline-offset-4" href="/login">
+                  Logg inn og legg til første abonnement
+                </Link>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -271,6 +289,13 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
           >
             {isRegister ? "Har du allerede konto? Logg inn" : "Ny bruker? Opprett konto"}
           </Link>
+          <p className="mt-4 text-center text-xs font-semibold leading-5 text-[#5F6F82]">
+            Trenger du hjelp? Kontakt{" "}
+            <a className="text-[#C8102E] hover:underline" href={`mailto:${siteConfig.contactEmail}`}>
+              {siteConfig.contactEmail}
+            </a>
+            .
+          </p>
         </div>
       </section>
       <PublicFooter />

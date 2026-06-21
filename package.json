@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:billing": "node --test scripts/test-billing-flow.mjs",
+    "test:launch": "node --test scripts/test-launch-readiness.mjs",
     "check:text": "node scripts/check-text-encoding.mjs",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",

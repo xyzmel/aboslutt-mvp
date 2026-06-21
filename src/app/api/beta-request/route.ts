@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    message: "Takk! Vi har mottatt ønsket ditt om beta-tilgang.",
+    message: "Takk! Vi har mottatt forespørselen din.",
   });
 }
 

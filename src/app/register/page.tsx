@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { MagicLinkAuthScreen } from "@/components/auth/MagicLinkAuthScreen";
 import { authOptions } from "@/lib/auth";
@@ -6,6 +7,12 @@ import { getSafeAuthConfigStatus } from "@/lib/auth-config-status";
 
 type RegisterPageProps = {
   searchParams: Promise<{ callbackUrl?: string }>;
+};
+
+export const metadata: Metadata = {
+  title: "Opprett konto | Aboslutt",
+  description: "Opprett en Aboslutt-konto og start med å legge inn abonnementene dine manuelt.",
+  alternates: { canonical: "/register" },
 };
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {

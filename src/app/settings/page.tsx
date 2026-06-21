@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { SettingsClient } from "@/components/settings/SettingsClient";
 import { isAdminUser } from "@/lib/admin";
 import { isVippsConfigured } from "@/lib/auth-config-status";
-import { isVippsPaymentConfigured } from "@/lib/billing/vipps";
+import { isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
 import { getCurrentAppUser } from "@/lib/current-user";
 import { canUseEmailReminders, canUseMonthlySummary } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +13,10 @@ import { prisma } from "@/lib/prisma";
 const gmailReadonlyScope = "https://www.googleapis.com/auth/gmail.readonly";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Innstillinger | Aboslutt",
+  robots: { index: false, follow: false },
+};
 
 export default async function SettingsPage() {
   let currentUser;
@@ -34,6 +39,7 @@ export default async function SettingsPage() {
     reminderDaysBefore: 3,
     monthlySummaryEnabled: false,
   };
+  let billingAgreement: SettingsBillingAgreement | null = null;
 
   try {
     [googleAccount, vippsAccount] = await Promise.all([
@@ -71,6 +77,12 @@ export default async function SettingsPage() {
     logServerError("settings:notificationPreferences", error, currentUser.id);
   }
 
+  try {
+    billingAgreement = await getSettingsBillingAgreement(currentUser.id);
+  } catch (error) {
+    logServerError("settings:billingAgreement", error, currentUser.id);
+  }
+
   const gmailScopeConnected = Boolean(
     googleAccount?.scope?.split(" ").includes(gmailReadonlyScope),
   );
@@ -91,6 +103,7 @@ export default async function SettingsPage() {
 
       <SettingsClient
         email={currentUser.email}
+        billingAgreement={billingAgreement}
         emailRemindersEnabled={notificationPreferences.emailRemindersEnabled}
         emailRemindersAvailable={emailRemindersAvailable}
         gmailScopeConnected={gmailScopeConnected}
@@ -102,13 +115,78 @@ export default async function SettingsPage() {
         name={currentUser.name}
         plan={currentUser.plan}
         reminderDaysBefore={notificationPreferences.reminderDaysBefore}
-        paymentsConfigured={isVippsPaymentConfigured()}
+        paymentsConfigured={isVippsRecurringConfigured()}
         vippsConnected={Boolean(vippsAccount)}
         vippsConfigured={isVippsConfigured()}
       />
       <AppFooter compact />
     </main>
   );
+}
+
+type SettingsBillingAgreement = {
+  plan: string;
+  status: string;
+  priceNok: number;
+  interval: string;
+  currency: string;
+  activatedAt: string | null;
+  cancelledAt: string | null;
+  expiresAt: string | null;
+};
+
+async function getSettingsBillingAgreement(userId: string): Promise<SettingsBillingAgreement | null> {
+  const agreement =
+    (await prisma.billingAgreement.findFirst({
+      where: {
+        userId,
+        provider: "vipps",
+        status: { in: ["active", "cancellation_pending"] },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        plan: true,
+        status: true,
+        priceNok: true,
+        interval: true,
+        currency: true,
+        activatedAt: true,
+        cancelledAt: true,
+        expiresAt: true,
+      },
+    })) ??
+    (await prisma.billingAgreement.findFirst({
+      where: {
+        userId,
+        provider: "vipps",
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        plan: true,
+        status: true,
+        priceNok: true,
+        interval: true,
+        currency: true,
+        activatedAt: true,
+        cancelledAt: true,
+        expiresAt: true,
+      },
+    }));
+
+  if (!agreement) {
+    return null;
+  }
+
+  return {
+    plan: agreement.plan,
+    status: agreement.status,
+    priceNok: agreement.priceNok,
+    interval: agreement.interval,
+    currency: agreement.currency,
+    activatedAt: agreement.activatedAt?.toISOString() ?? null,
+    cancelledAt: agreement.cancelledAt?.toISOString() ?? null,
+    expiresAt: agreement.expiresAt?.toISOString() ?? null,
+  };
 }
 
 function SettingsLoadError() {

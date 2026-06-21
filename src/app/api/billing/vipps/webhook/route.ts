@@ -1,11 +1,21 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import {
+  applyVerifiedBillingStatus,
+  downgradeUserIfNoActivePremiumAgreement,
+  isRetryablePrismaError,
+} from "@/lib/billing/reconcile";
+import {
   getAgreement,
   parseVippsWebhookEvent,
   sanitizeVippsPayloadForStorage,
   verifyWebhookSignature,
 } from "@/lib/billing/vipps-recurring";
+import {
+  sendPaymentFailedEmailOnce,
+  sendPremiumCancelledEmailOnce,
+} from "@/lib/billing/billing-emails";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
 const activeEvents = new Set(["epayments.payment.authorized.v1", "epayments.payment.captured.v1"]);
@@ -22,55 +32,108 @@ type BillingAgreementForWebhook = NonNullable<Awaited<ReturnType<typeof findBill
 export async function POST(request: Request) {
   const rawBody = await request.text();
 
-  if (!verifyWebhookSignature(request, rawBody)) {
+  let signatureVerified = false;
+
+  try {
+    signatureVerified = verifyWebhookSignature(request, rawBody);
+  } catch (error) {
+    logger.error("[billing:webhook:config]", { error });
+    return NextResponse.json({ ok: false, error: "WEBHOOK_NOT_CONFIGURED" }, { status: 503 });
+  }
+
+  if (!signatureVerified) {
+    logger.warn("[billing:webhook:invalid-signature]");
     return NextResponse.json({ ok: false, error: "INVALID_SIGNATURE" }, { status: 401 });
   }
 
-  const event = parseVippsWebhookEvent(rawBody);
+  let event: ReturnType<typeof parseVippsWebhookEvent>;
 
-  if (event.providerEventId) {
-    const existingEvent = await prisma.billingEvent.findFirst({
-      where: {
-        provider: "vipps",
-        providerEventId: event.providerEventId,
-      },
-      select: { id: true },
-    });
-
-    if (existingEvent) {
-      return NextResponse.json({ ok: true, duplicate: true });
-    }
+  try {
+    event = parseVippsWebhookEvent(rawBody);
+  } catch (error) {
+    logger.warn("[billing:webhook:malformed]", { error });
+    return NextResponse.json({ ok: false, error: "MALFORMED_PAYLOAD" }, { status: 400 });
   }
 
-  const agreement = await findBillingAgreementForEvent(event);
-  await prisma.billingEvent.create({
-    data: {
-      provider: "vipps",
-      eventType: event.eventType,
-      providerEventId: event.providerEventId,
-      providerAgreementId: event.providerAgreementId ?? agreement?.providerAgreementId,
-      providerChargeId: event.providerChargeId ?? agreement?.providerChargeId,
-      reference: event.reference ?? agreement?.reference,
-      rawJson: toPrismaJson(sanitizeVippsPayloadForStorage(event.payload)),
-    },
+  logger.info("[billing:webhook:received]", {
+    eventType: event.eventType,
+    providerEventId: event.providerEventId,
+    reference: event.reference,
+    providerAgreementId: event.providerAgreementId,
+    providerChargeId: event.providerChargeId,
   });
 
-  if (!agreement || !handledEvents.has(event.eventType)) {
-    return NextResponse.json({ ok: true, handled: false });
-  }
+  try {
+    let isDuplicate = false;
 
-  if (activeEvents.has(event.eventType)) {
-    await activateAgreementIfVerified(agreement);
-    return NextResponse.json({ ok: true, handled: true });
-  }
+    if (event.providerEventId) {
+      const existingEvent = await prisma.billingEvent.findFirst({
+        where: {
+          provider: "vipps",
+          providerEventId: event.providerEventId,
+        },
+        select: { id: true },
+      });
 
-  if (event.eventType === "epayments.payment.created.v1") {
-    await markAgreementPending(agreement);
-    return NextResponse.json({ ok: true, handled: true });
-  }
+      if (existingEvent) {
+        isDuplicate = true;
 
-  await markAgreementInactive(agreement, statusForInactiveEvent(event.eventType));
-  return NextResponse.json({ ok: true, handled: true });
+        logger.info("[billing:webhook:duplicate]", {
+          eventType: event.eventType,
+          providerEventId: event.providerEventId,
+          reference: event.reference,
+        });
+      }
+    }
+
+    const agreement = await findBillingAgreementForEvent(event);
+
+    if (!isDuplicate) {
+      await prisma.billingEvent.create({
+        data: {
+          provider: "vipps",
+          eventType: event.eventType,
+          providerEventId: event.providerEventId,
+          providerAgreementId: event.providerAgreementId ?? agreement?.providerAgreementId,
+          providerChargeId: event.providerChargeId ?? agreement?.providerChargeId,
+          reference: event.reference ?? agreement?.reference,
+          rawJson: toPrismaJson(sanitizeVippsPayloadForStorage(event.payload)),
+        },
+      });
+    }
+
+    if (!agreement || !handledEvents.has(event.eventType)) {
+      return NextResponse.json({ ok: true, duplicate: isDuplicate, handled: false });
+    }
+
+    if (activeEvents.has(event.eventType)) {
+      await activateAgreementIfVerified(agreement);
+      return NextResponse.json({ ok: true, duplicate: isDuplicate, handled: true });
+    }
+
+    if (event.eventType === "epayments.payment.created.v1") {
+      await markAgreementPending(agreement);
+      return NextResponse.json({ ok: true, duplicate: isDuplicate, handled: true });
+    }
+
+    await markAgreementInactive(agreement, statusForInactiveEvent(event.eventType));
+    return NextResponse.json({ ok: true, duplicate: isDuplicate, handled: true });
+  } catch (error) {
+    const retryable = isRetryablePrismaError(error);
+
+    logger.error("[billing:webhook:error]", {
+      error,
+      retryable,
+      eventType: event.eventType,
+      providerEventId: event.providerEventId,
+      reference: event.reference,
+    });
+
+    return NextResponse.json(
+      { ok: false, error: retryable ? "RETRYABLE_WEBHOOK_ERROR" : "WEBHOOK_PROCESSING_ERROR" },
+      { status: retryable ? 503 : 500 },
+    );
+  }
 }
 
 async function findBillingAgreementForEvent(event: {
@@ -81,7 +144,7 @@ async function findBillingAgreementForEvent(event: {
   if (event.reference) {
     const agreement = await prisma.billingAgreement.findUnique({
       where: { reference: event.reference },
-      include: { user: { select: { id: true, plan: true } } },
+      include: { user: { select: { id: true, plan: true, email: true, name: true } } },
     });
 
     if (agreement) {
@@ -92,7 +155,7 @@ async function findBillingAgreementForEvent(event: {
   if (event.providerAgreementId) {
     const agreement = await prisma.billingAgreement.findUnique({
       where: { providerAgreementId: event.providerAgreementId },
-      include: { user: { select: { id: true, plan: true } } },
+      include: { user: { select: { id: true, plan: true, email: true, name: true } } },
     });
 
     if (agreement) {
@@ -103,7 +166,7 @@ async function findBillingAgreementForEvent(event: {
   if (event.providerChargeId) {
     return prisma.billingAgreement.findFirst({
       where: { providerChargeId: event.providerChargeId },
-      include: { user: { select: { id: true, plan: true } } },
+      include: { user: { select: { id: true, plan: true, email: true, name: true } } },
     });
   }
 
@@ -123,22 +186,13 @@ async function activateAgreementIfVerified(agreement: BillingAgreementForWebhook
     return;
   }
 
-  const now = new Date();
+  await applyVerifiedBillingStatus(agreement, "active");
 
-  await prisma.$transaction([
-    prisma.billingAgreement.update({
-      where: { id: agreement.id },
-      data: {
-        status: "active",
-        activatedAt: agreement.activatedAt ?? now,
-        cancelledAt: null,
-      },
-    }),
-    prisma.user.update({
-      where: { id: agreement.userId },
-      data: { plan: "premium" },
-    }),
-  ]);
+  logger.info("[billing:status-changed]", {
+    reference: agreement.reference,
+    previousStatus: agreement.status,
+    nextStatus: "active",
+  });
 }
 
 async function markAgreementPending(agreement: BillingAgreementForWebhook) {
@@ -155,42 +209,27 @@ async function markAgreementPending(agreement: BillingAgreementForWebhook) {
 async function markAgreementInactive(agreement: BillingAgreementForWebhook, status: string) {
   const now = new Date();
 
-  await prisma.billingAgreement.update({
+  const updatedAgreement = await prisma.billingAgreement.update({
     where: { id: agreement.id },
     data: {
       status,
       cancelledAt: now,
     },
+    include: { user: { select: { email: true, name: true } } },
   });
 
   await downgradeUserIfNoActivePremiumAgreement(agreement.userId);
-}
 
-async function downgradeUserIfNoActivePremiumAgreement(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { plan: true },
-  });
-
-  if (!user || user.plan === "admin" || user.plan === "beta") {
-    return;
+  if ((status === "cancelled" || status === "terminated") && (agreement.status === "active" || agreement.activatedAt)) {
+    await sendPremiumCancelledEmailOnce(updatedAgreement);
+  } else {
+    await sendPaymentFailedEmailOnce(updatedAgreement);
   }
 
-  const activePremiumAgreement = await prisma.billingAgreement.findFirst({
-    where: {
-      userId,
-      status: "active",
-    },
-    select: { id: true },
-  });
-
-  if (activePremiumAgreement) {
-    return;
-  }
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { plan: "free" },
+  logger.info("[billing:status-changed]", {
+    reference: agreement.reference,
+    previousStatus: agreement.status,
+    nextStatus: status,
   });
 }
 

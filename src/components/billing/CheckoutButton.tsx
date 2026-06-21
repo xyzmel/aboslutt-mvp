@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { trackFunnelEvent } from "@/lib/analytics";
 import type { CheckoutPlanId } from "@/lib/billing/plans";
+import { siteConfig } from "@/lib/site-config";
 
 export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: string }) {
   const [message, setMessage] = useState<string | null>(null);
@@ -10,6 +12,7 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
   async function startCheckout() {
     setIsLoading(true);
     setMessage(null);
+    trackFunnelEvent("checkout_started", { plan });
 
     try {
       const response = await fetch("/api/billing/checkout", {
@@ -23,13 +26,16 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
       };
 
       if (response.ok && result.redirectUrl) {
+        trackFunnelEvent("vipps_redirect_started", { plan });
         window.location.href = result.redirectUrl;
         return;
       }
 
+      trackFunnelEvent("checkout_failed", { plan, reason: result.error ?? "unknown" });
       setMessage(getCheckoutErrorMessage(result.error));
     } catch {
-      setMessage("Kunne ikke starte betaling akkurat nå. Prøv igjen.");
+      trackFunnelEvent("checkout_failed", { plan, reason: "network" });
+      setMessage(`Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`);
     } finally {
       setIsLoading(false);
     }
@@ -67,5 +73,5 @@ function getCheckoutErrorMessage(error?: string) {
     return "Vipps kunne ikke kontaktes akkurat nå. Prøv igjen.";
   }
 
-  return "Kunne ikke starte betaling akkurat nå. Prøv igjen.";
+  return `Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`;
 }

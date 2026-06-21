@@ -737,6 +737,76 @@ QA checklist:
 - Bruker downgrades bare til `free` når ingen annen aktiv Premium billing agreement finnes, og aldri hvis brukerplanen er `admin` eller `beta`.
 - Admin bruker-detaljside viser BillingAgreements og relaterte BillingEvents uten secrets, tokens eller auth-headere.
 
+### Vipps Recurring production runbook
+
+Diagnose checkout-feil:
+
+- Sjekk serverlogg for `[billing:checkout:started]`, `[billing:agreement:created]` og `[billing:checkout]`.
+- Trygge feilkoder fra checkout er `UNAUTHORIZED`, `INVALID_PLAN`, `PAYMENTS_NOT_CONFIGURED`, `VIPPS_TOKEN_ERROR`, `VIPPS_AGREEMENT_ERROR` og `INTERNAL_ERROR`.
+- `PAYMENTS_NOT_CONFIGURED` betyr at minst en av `VIPPS_RECURRING_*`, `VIPPS_WEBHOOK_SECRET` eller `NEXT_PUBLIC_SITE_URL` mangler.
+- `VIPPS_TOKEN_ERROR` peker vanligvis på klient-ID, klienthemmelighet, subscription key, MSN eller base URL.
+- `VIPPS_AGREEMENT_ERROR` betyr at token ble hentet, men agreement-opprettelsen feilet hos Vipps.
+
+Verifiser webhook-registrering:
+
+- Webhook URL skal være `https://www.aboslutt.no/api/billing/vipps/webhook`.
+- `GET` mot webhook-ruten skal ikke brukes som helsesjekk. Gyldige events kommer som signerte `POST`-kall fra Vipps.
+- `/api/health` viser `billing.webhookSecretPresent`, `billing.vippsRecurringConfigured` og siste webhook-tidspunkt uten å lekke verdier.
+- Ugyldig signatur skal gi `401`, malformed JSON skal gi `400`, duplicate provider event id skal gi `200`.
+
+Inspiser pending agreements:
+
+- Gå til `/admin/billing` som admin.
+- Se etter lokal status `pending`, opprettet/oppdatert tidspunkt, siste event og eventuell trygg feilmelding.
+- Pending-avtaler eldre enn 10 minutter kan avstemmes med knappen `Avstem med Vipps`.
+- Admin-siden viser ikke secrets, tokens, auth-headere eller full rå Vipps-payload.
+
+Avstem en betaling:
+
+- Bruk `/admin/billing` og kjør `Avstem med Vipps` på enkeltavtalen, eller kjør global avstemming for pending-avtaler eldre enn 10 minutter.
+- Avstemming kaller Vipps server-side med lokal `providerAgreementId`.
+- Premium aktiveres bare hvis Vipps bekrefter aktiv agreement.
+- Failed/expired/cancelled-status oppdateres lokalt bare fra verifisert Vipps-status.
+- Frontend query params og retur-URL-er skal aldri brukes til aktivering.
+
+Håndter duplicate events:
+
+- Duplicate webhook med samme `providerEventId` returnerer `200` med `duplicate: true`.
+- E-postmarkører lagres som egne `BillingEvent`-rader med provider `aboslutt`, slik at webhook retries ikke sender kunde-e-post flere ganger.
+- Ikke slett duplicate events eller markører uten å forstå hvilken kunde-e-post eller statusendring de beskytter.
+
+Håndter Vipps outage:
+
+- La pending-avtaler bli liggende mens Vipps er utilgjengelig.
+- Webhook transient databasefeil returnerer retrybar respons slik at Vipps kan forsøke igjen.
+- Bruk `/api/health` for database/config-booleans og `/admin/billing` for trygg agreement-diagnostikk.
+- Når Vipps er tilbake, kjør avstemming for pending-avtaler eldre enn 10 minutter.
+
+Trygg kansellering og downgrade:
+
+- Brukerinitiert kansellering skal gå via `POST /api/billing/cancel`, som finner aktiv avtale server-side for innlogget bruker.
+- Frontend sender aldri agreement id som autoritativ kilde.
+- Downgrade til `free` skjer bare hvis brukeren ikke har andre aktive Premium billing agreements.
+- Brukere med plan `admin` eller `beta` skal ikke downgrades automatisk av billing-hendelser.
+- Hvis manuell support-endring trengs, dokumenter reference, lokal status, Vipps-status og siste event fra `/admin/billing`.
+
+## Public production launch checklist
+
+- Funnel analytics uses the provider-agnostic helper in `src/lib/analytics.ts`. Set `NEXT_PUBLIC_ANALYTICS_ENDPOINT` later to forward sanitized client events to a production analytics provider; do not send email, phone, names, payment references, Vipps identifiers, subscription names, secrets or tokens.
+- Production environment variables are verified in Vercel, including auth, SMTP, database, Vipps Recurring and `NEXT_PUBLIC_SITE_URL`.
+- Database migrations are applied with `npm run prisma:deploy`.
+- Vipps webhook registration is verified for `https://www.aboslutt.no/api/billing/vipps/webhook`.
+- A successful real Vipps payment is tested end to end.
+- A cancelled Vipps payment is tested and lands on `/payment/cancelled`.
+- Premium activation is tested from verified webhook/API status only.
+- Premium cancellation is tested from settings.
+- Email delivery is tested for login, Premium activation, cancellation and payment failure where relevant.
+- Mobile layout is tested on landing page, register/login, pricing, dashboard, settings and payment pages.
+- Legal pages are verified: privacy, terms, sales terms, cancellation information and contact details.
+- Analytics is verified for launch funnel events without PII or payment identifiers.
+- Database backup and restore expectations are verified with Neon.
+- Admin access is verified for diagnostics, users, billing and reconciliation.
+
 ## TODO
 
 - Bekrefte Vipps Login-konfigurasjon, well-known URL-er og scopes mot Vipps MobilePay før produksjon.

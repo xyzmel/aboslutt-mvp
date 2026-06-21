@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
+import { FunnelEvent } from "@/components/analytics/FunnelEvent";
 import { CheckoutButton } from "@/components/billing/CheckoutButton";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
@@ -15,12 +17,25 @@ const valuePoints = [
   "Premium aktiveres når Vipps bekrefter betalingen",
 ];
 
+export const metadata: Metadata = {
+  title: "Priser",
+  description:
+    "Start gratis med manuell abonnementskontroll, eller oppgrader til Aboslutt Premium med Vipps.",
+  alternates: { canonical: "/pricing" },
+  openGraph: {
+    title: "Priser | Aboslutt",
+    description: "Gratis oversikt og Premium-planer for automatisk skanning, varsler og oppsigelseshjelp.",
+    url: "https://www.aboslutt.no/pricing",
+  },
+};
+
 export default async function PricingPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user ? { email: session.user.email ?? null } : null;
 
   return (
     <main className="flex min-h-screen flex-col bg-[#0D1B2A] text-white">
+      <FunnelEvent event="pricing_viewed" />
       <PublicHeader />
 
       <section className="px-5 py-14">
