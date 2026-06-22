@@ -27,14 +27,30 @@ export function getMicrosoftConnectionState({ hasAccount, credentialsValid, reco
 
 export function normalizeMicrosoftProfile(profile) {
   const providerAccountId = typeof profile?.id === "string" ? profile.id : "";
-  const providerEmail =
+  const providerEmail = sanitizeMicrosoftMailboxAddress(
     typeof profile?.mail === "string" && profile.mail
       ? profile.mail
       : typeof profile?.userPrincipalName === "string"
         ? profile.userPrincipalName
-        : null;
+        : null,
+  );
 
   return { providerAccountId, providerEmail };
+}
+
+export function sanitizeMicrosoftMailboxAddress(value) {
+  const decoded = decodeURIComponent(String(value ?? "").trim());
+
+  if (!decoded || decoded.includes("#EXT#")) {
+    return null;
+  }
+
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(decoded)) {
+    return null;
+  }
+
+  const match = decoded.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match?.[0] ?? null;
 }
 
 export function mergeMicrosoftRefreshToken(previousRefreshToken, tokenResponse) {

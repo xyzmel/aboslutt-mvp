@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { MagicLinkAuthScreen } from "@/components/auth/MagicLinkAuthScreen";
 import { authOptions } from "@/lib/auth";
@@ -6,6 +7,12 @@ import { getSafeAuthConfigStatus } from "@/lib/auth-config-status";
 
 type LoginPageProps = {
   searchParams: Promise<{ callbackUrl?: string }>;
+};
+
+export const metadata: Metadata = {
+  title: "Logg inn",
+  description: "Logg inn på Aboslutt for å administrere abonnementene dine.",
+  alternates: { canonical: "/login" },
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {

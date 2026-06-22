@@ -15,6 +15,7 @@ import {
   isTenantSpecificMicrosoftAuthority,
   mergeMicrosoftRefreshToken,
   normalizeMicrosoftProfile,
+  sanitizeMicrosoftMailboxAddress,
 } from "../src/lib/microsoft-oauth-config.mjs";
 import {
   matchSelectedOutlookCandidates,
@@ -225,6 +226,13 @@ test("normalizes organizational Microsoft account callback profile", () => {
     providerAccountId: "org-account-id",
     providerEmail: "employee@example.com",
   });
+});
+
+test("does not display malformed Microsoft guest principal mailbox identifiers", () => {
+  assert.equal(sanitizeMicrosoftMailboxAddress("john_contoso.com#EXT#@tenant.onmicrosoft.com"), null);
+  assert.equal(sanitizeMicrosoftMailboxAddress("guest%23EXT%23@tenant.onmicrosoft.com"), null);
+  assert.equal(sanitizeMicrosoftMailboxAddress("11111111-1111-1111-1111-111111111111"), null);
+  assert.equal(sanitizeMicrosoftMailboxAddress("person@example.com"), "person@example.com");
 });
 
 test("preserves previous refresh token when refresh response omits replacement", () => {

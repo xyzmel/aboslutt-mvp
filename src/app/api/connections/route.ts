@@ -10,6 +10,7 @@ import {
 import { canUseGmailScan } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { sanitizeMicrosoftMailboxAddress } from "@/lib/microsoft-oauth-config.mjs";
 
 const gmailReadonlyScope = "https://www.googleapis.com/auth/gmail.readonly";
 
@@ -36,7 +37,7 @@ export async function GET() {
     try {
       const connection = await validateMicrosoftConnection(microsoftAccount);
       microsoftConnected = true;
-      microsoftEmail = connection.email ?? microsoftAccount.providerEmail ?? null;
+      microsoftEmail = sanitizeMicrosoftMailboxAddress(connection.email ?? microsoftAccount.providerEmail);
     } catch (error) {
       microsoftExpired =
         error instanceof MicrosoftGraphError &&

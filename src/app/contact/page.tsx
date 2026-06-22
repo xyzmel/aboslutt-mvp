@@ -4,10 +4,7 @@ import { siteConfig } from "@/lib/site-config";
 
 export default function ContactPage() {
   return (
-    <PublicPageShell
-      intro="Ta kontakt om Aboslutt, betaling, personvern eller hjelp til å komme i gang."
-      title="Kontakt"
-    >
+    <PublicPageShell intro="Ta kontakt om Aboslutt, betaling, personvern eller hjelp til å komme i gang." title="Kontakt">
       <section>
         <h2 className="text-lg font-bold text-[#0D1B2A]">{siteConfig.companyName}</h2>
         <div className="mt-2 space-y-1">
@@ -28,7 +25,7 @@ export default function ContactPage() {
         <ul className="mt-2 list-disc space-y-2 pl-5">
           <li>Hjelp til å få oversikt over abonnementer.</li>
           <li>Premium, Vipps-betaling og faste trekk.</li>
-          <li>Personvern, Gmail-skanning og sletting av data.</li>
+          <li>Personvern, e-postimport og sletting av data.</li>
           <li>Feil i abonnementskandidater eller import fra e-post.</li>
         </ul>
       </section>

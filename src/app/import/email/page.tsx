@@ -44,6 +44,8 @@ type MicrosoftImportState =
   | "disconnected"
   | "expired";
 
+type ProviderStatus = "disconnected" | "connecting" | "connected" | "scanning" | "expired" | "error";
+
 type OutlookCandidate = {
   id: string;
   providerName: string;
@@ -137,34 +139,34 @@ export default function EmailImportPage() {
         microsoftConfigured?: boolean;
         microsoftEmail?: string | null;
         microsoftExpired?: boolean;
+        microsoftStatus?: ProviderStatus;
       };
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
       setMicrosoftConnected(Boolean(result.microsoftConnected));
       setMicrosoftConfigured(Boolean(result.microsoftConfigured));
-      setMicrosoftEmail(result.microsoftEmail ?? null);
+      setMicrosoftEmail(sanitizeDisplayEmail(result.microsoftEmail));
       const microsoftExpired = Boolean(result.microsoftExpired);
       if (microsoftExpired) {
+        setMicrosoftConnected(false);
         setMicrosoftImportState("expired");
+        setMicrosoftEmail(null);
         setMicrosoftMessage("Tilkoblingen til Outlook har utløpt.");
       }
       const microsoft = searchParams.get("microsoft");
 
       if (microsoft === "connected") {
-        setMicrosoftConnected(true);
-        setMicrosoftImportState("connected");
-        setMicrosoftMessage("Outlook tilkoblet. Du kan skanne e-post når du er klar.");
-        showToast({
-          title: "Outlook tilkoblet",
-          message: "Outlook-tilgangen er klar.",
-          tone: "success",
-        });
+        if (result.microsoftConnected && !microsoftExpired) {
+          setMicrosoftConnected(true);
+          setMicrosoftImportState("connected");
+          setMicrosoftMessage("Outlook er koblet til og klar for skanning.");
+        }
         return;
       }
 
       if (microsoft) {
-        setMicrosoftImportState(microsoft === "expired" || microsoft === "cancelled" ? "expired" : "scan_failed");
+        setMicrosoftImportState(microsoft === "expired" ? "expired" : microsoft === "cancelled" ? "not_connected" : "scan_failed");
         setMicrosoftMessage(getMicrosoftConnectionMessage(microsoft));
         return;
       }
@@ -309,7 +311,6 @@ export default function EmailImportPage() {
           setMicrosoftImportState("expired");
           setMicrosoftEmail(null);
           setMicrosoftMessage("Tilkoblingen til Outlook har utløpt.");
-          showImportToast("outlook-expired", "Outlook må kobles til på nytt", "Tilkoblingen til Outlook har utløpt.", "error");
           return;
         }
 
@@ -327,13 +328,11 @@ export default function EmailImportPage() {
           ? `${candidates.length} mulige abonnementer er klare for gjennomgang.`
           : "Vi fant ingen sikre abonnementer i denne skanningen.",
         candidates.length > 0 ? "success" : "info");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Kunne ikke skanne Outlook akkurat nå.";
+    } catch {
       setMicrosoftImportState("scan_failed");
       setMicrosoftScanId(null);
-      setMicrosoftMessage(message);
+      setMicrosoftMessage("Vi klarte ikke å skanne e-posten. Koble til på nytt eller prøv igjen.");
       setMicrosoftCandidates([]);
-      showImportToast("outlook-scan-failed", "Skanning feilet", message, "error");
     }
   }
 
@@ -498,11 +497,23 @@ export default function EmailImportPage() {
     }).catch(() => null);
   }
 
+  const gmailStatus: ProviderStatus = isScanningGmail ? "scanning" : gmailScopeConnected ? "connected" : "disconnected";
+  const outlookStatus = getOutlookProviderStatus(microsoftImportState, microsoftConnected);
+  const outlookEmail = outlookStatus === "connected" ? sanitizeDisplayEmail(microsoftEmail) : null;
+  const outlookFeedback =
+    outlookStatus === "connected"
+      ? "Outlook er koblet til og klar for skanning."
+      : outlookStatus === "expired"
+        ? "Tilkoblingen til Outlook har utløpt."
+        : outlookStatus === "error"
+          ? "Vi klarte ikke å skanne e-posten. Koble til på nytt eller prøv igjen."
+          : microsoftMessage;
+
   return (
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] text-[#0D1B2A]">
-      <AppHeader maxWidthClassName="max-w-4xl" />
+      <AppHeader maxWidthClassName="max-w-5xl" />
 
-      <section className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
+      <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-7 sm:py-8">
         {status === "unauthenticated" ? (
           <div className="mb-6 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-5 text-sm text-[#C8102E]">
             <p className="font-bold">Du må logge inn for å importere abonnementer.</p>
@@ -538,7 +549,7 @@ export default function EmailImportPage() {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <ProviderCard
               action={
-                gmailScanAvailable && gmailScopeConnected ? (
+                gmailScanAvailable && gmailStatus === "connected" ? (
                   <LoadingButton isLoading={isScanningGmail} loadingLabel="Skanner..." onClick={scanGmail} type="button">
                     Skann e-post
                   </LoadingButton>
@@ -568,7 +579,7 @@ export default function EmailImportPage() {
                   </button>
                 )
               }
-              connectedEmail={gmailScopeConnected ? session?.user?.email ?? null : null}
+              connectedEmail={gmailStatus === "connected" ? session?.user?.email ?? null : null}
               feedback={
                 gmailConnected && !gmailScopeConnected
                   ? "Koble til Gmail på nytt for å gi lesetilgang."
@@ -590,17 +601,17 @@ export default function EmailImportPage() {
                   </button>
                 ) : null
               }
-              status={gmailScopeConnected ? "Tilkoblet" : "Ikke tilkoblet"}
-              statusTone={gmailScopeConnected ? "success" : "neutral"}
+              status={getProviderStatusLabel(gmailStatus)}
+              statusTone={getProviderStatusTone(gmailStatus)}
             />
 
             <ProviderCard
               action={
-                microsoftConnected && gmailScanAvailable ? (
+                outlookStatus === "connected" && gmailScanAvailable ? (
                   <LoadingButton isLoading={microsoftImportState === "scanning"} loadingLabel="Skanner..." onClick={scanMicrosoft} type="button">
                     Skann e-post
                   </LoadingButton>
-                ) : microsoftConnected ? (
+                ) : outlookStatus === "connected" ? (
                   <button
                     className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
                     onClick={() => setPremiumDialogReason("E-postskanning krever Premium.")}
@@ -617,7 +628,7 @@ export default function EmailImportPage() {
                   >
                     {microsoftImportState === "connecting"
                       ? "Kobler til Microsoft ..."
-                      : microsoftImportState === "expired"
+                      : outlookStatus === "expired"
                         ? "Koble til på nytt"
                         : "Koble til Outlook"}
                   </a>
@@ -627,13 +638,13 @@ export default function EmailImportPage() {
                   </p>
                 )
               }
-              connectedEmail={microsoftConnected ? microsoftEmail : null}
-              feedback={microsoftMessage}
+              connectedEmail={outlookEmail}
+              feedback={outlookFeedback}
               imageAlt="Outlook-logo"
               imageSrc="/outlook.png"
               name="Outlook"
               secondaryAction={
-                microsoftConnected ? (
+                outlookStatus === "connected" ? (
                   <button
                     className="text-xs font-bold text-[#5F6F82] hover:text-[#C8102E]"
                     disabled={microsoftImportState === "scanning"}
@@ -645,13 +656,11 @@ export default function EmailImportPage() {
                 ) : null
               }
               status={
-                microsoftConnected
-                  ? "Tilkoblet"
-                  : microsoftImportState === "expired"
-                    ? "Tilkoblingen har utløpt"
-                    : "Ikke tilkoblet"
+                outlookStatus === "expired"
+                  ? "Må kobles til på nytt"
+                  : getProviderStatusLabel(outlookStatus)
               }
-              statusTone={microsoftConnected ? "success" : microsoftImportState === "expired" ? "warning" : "neutral"}
+              statusTone={getProviderStatusTone(outlookStatus)}
             />
           </div>
         </section>
@@ -695,7 +704,7 @@ export default function EmailImportPage() {
             E-posttekst
           </label>
           <textarea
-            className="mt-2 min-h-56 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
+            className="mt-2 min-h-36 w-full resize-y rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
             id="emailText"
             onChange={(event) => setEmailText(event.target.value)}
             placeholder="Eksempel: Kvittering fra Spotify. Beløp kr 129. Neste trekk 3. jul."
@@ -814,7 +823,7 @@ function ProviderCard({
   imageSrc: string;
   imageAlt: string;
   status: string;
-  statusTone: "success" | "warning" | "neutral";
+  statusTone: "success" | "warning" | "neutral" | "error";
   connectedEmail?: string | null;
   feedback?: string | null;
   action: ReactNode;
@@ -824,10 +833,11 @@ function ProviderCard({
     success: "bg-emerald-50 text-emerald-700 ring-emerald-200",
     warning: "bg-[#F8F1E8] text-[#8A4B13] ring-amber-200",
     neutral: "bg-[#F0F4F8] text-[#5F6F82] ring-[#DBE4EE]",
+    error: "bg-[#F5E6E9] text-[#C8102E] ring-[#F3C3CC]",
   }[statusTone];
 
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-5">
+    <article className="flex h-full flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 sm:p-5">
       <div className="flex items-start gap-4">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
           <Image
@@ -846,14 +856,16 @@ function ProviderCard({
             </span>
           </div>
           {connectedEmail ? (
-            <p className="mt-1 truncate text-sm font-semibold text-[#5F6F82]">{connectedEmail}</p>
+            <p className="mt-1 truncate text-sm font-semibold text-[#5F6F82]" title={connectedEmail}>
+              {connectedEmail}
+            </p>
           ) : null}
         </div>
       </div>
 
       {feedback ? <p className="mt-4 text-sm font-semibold text-[#5F6F82]">{feedback}</p> : null}
 
-      <div className="mt-auto pt-5">
+      <div className="pt-4">
         <div className="flex flex-col gap-2">{action}</div>
         {secondaryAction ? <div className="mt-3">{secondaryAction}</div> : null}
       </div>
@@ -1161,6 +1173,73 @@ function getMicrosoftConnectionMessage(code: string) {
   }
 
   return "Vi klarte ikke å koble til Outlook. Prøv igjen.";
+}
+
+function getOutlookProviderStatus(state: MicrosoftImportState, connected: boolean): ProviderStatus {
+  if (state === "connecting") {
+    return "connecting";
+  }
+
+  if (state === "scanning") {
+    return "scanning";
+  }
+
+  if (state === "expired") {
+    return "expired";
+  }
+
+  if (state === "scan_failed") {
+    return "error";
+  }
+
+  if (connected && (state === "connected" || state === "review_results" || state === "no_candidates")) {
+    return "connected";
+  }
+
+  return "disconnected";
+}
+
+function getProviderStatusLabel(status: ProviderStatus) {
+  const labels: Record<ProviderStatus, string> = {
+    disconnected: "Ikke tilkoblet",
+    connecting: "Kobler til",
+    connected: "Tilkoblet",
+    scanning: "Skanner",
+    expired: "Må kobles til på nytt",
+    error: "Feil",
+  };
+
+  return labels[status];
+}
+
+function getProviderStatusTone(status: ProviderStatus): "success" | "warning" | "neutral" | "error" {
+  if (status === "connected") {
+    return "success";
+  }
+
+  if (status === "expired") {
+    return "warning";
+  }
+
+  if (status === "error") {
+    return "error";
+  }
+
+  return "neutral";
+}
+
+function sanitizeDisplayEmail(value: string | null | undefined) {
+  const decoded = decodeURIComponent(String(value ?? "").trim());
+
+  if (!decoded || decoded.includes("#EXT#")) {
+    return null;
+  }
+
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(decoded)) {
+    return null;
+  }
+
+  return decoded.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
 }
 
 function getOutlookConfidenceLabel(confidence: OutlookCandidate["confidence"]) {

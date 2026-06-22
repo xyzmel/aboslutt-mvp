@@ -16,13 +16,11 @@ export default function ResetPasswordPage() {
         </Link>
         <div className="rounded-[1.25rem] bg-white p-7 shadow-2xl shadow-black/20 sm:p-9">
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Aboslutt</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#0D1B2A]">
-            Lag nytt passord
-          </h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#0D1B2A]">Lag nytt passord</h1>
           <Suspense
             fallback={
               <p className="mt-4 rounded-xl bg-[#F0F4F8] px-4 py-3 text-sm font-semibold text-[#5F6F82]">
-                Laster lenke...
+                Laster lenken ...
               </p>
             }
           >
@@ -76,7 +74,7 @@ function ResetPasswordForm() {
   if (!token) {
     return (
       <p className="mt-4 rounded-xl bg-[#F5E6E9] px-4 py-3 text-sm font-semibold text-[#C8102E]">
-        Lenken mangler token.
+        Lenken er ugyldig eller utløpt. Be om en ny lenke for å lage nytt passord.
       </p>
     );
   }
@@ -85,11 +83,7 @@ function ResetPasswordForm() {
     <>
       <form className="mt-6 grid gap-4" onSubmit={savePassword}>
         <PasswordInput label="Nytt passord" onChange={setPassword} value={password} />
-        <PasswordInput
-          label="Bekreft nytt passord"
-          onChange={setConfirmPassword}
-          value={confirmPassword}
-        />
+        <PasswordInput label="Bekreft nytt passord" onChange={setConfirmPassword} value={confirmPassword} />
         <button
           className="rounded-xl bg-[#0D1B2A] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:opacity-55"
           disabled={isSubmitting}
@@ -125,6 +119,7 @@ function PasswordInput({
     <label className="text-sm font-semibold text-[#4A5568]">
       {label}
       <input
+        autoComplete="new-password"
         className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
         minLength={8}
         onChange={(event) => onChange(event.target.value)}

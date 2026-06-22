@@ -146,7 +146,7 @@ export function DashboardClient() {
           setHasGoogleGmailConnected(Boolean(connections.gmailScopeConnected));
         }
       } catch {
-        setErrorMessage("Kunne ikke hente abonnementer fra databasen.");
+        setErrorMessage("Kunne ikke hente abonnementene dine akkurat nå.");
       } finally {
         setIsLoading(false);
       }

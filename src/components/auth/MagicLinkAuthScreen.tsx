@@ -154,8 +154,8 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
 
           <p className="text-sm leading-6 text-[#5F6F82]">
             {isRegister
-              ? "Opprett konto med e-post og passord, eller fortsett med Google eller Vipps."
-              : "Logg inn med e-post og passord, Google eller Vipps."}
+              ? "Opprett konto med e-post og passord, eller fortsett med en tilgjengelig innloggingsmetode."
+              : "Logg inn med e-post og passord, eller fortsett med en tilgjengelig innloggingsmetode."}
           </p>
 
           {authErrorMessage ? (
@@ -267,14 +267,13 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               <GoogleIcon />
               Fortsett med Google
             </button>
-            <button
-              aria-label={providers.vipps ? "Logg inn med Vipps" : "Vipps Login kommer snart"}
-              className="flex h-12 w-full items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-sm font-bold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#FF5B24] focus:ring-offset-2 disabled:cursor-not-allowed disabled:rounded-xl disabled:border-slate-300 disabled:bg-slate-200 disabled:px-5 disabled:text-slate-600"
-              disabled={!providers.vipps}
-              onClick={() => signIn("vipps", { callbackUrl })}
-              type="button"
-            >
-              {providers.vipps ? (
+            {providers.vipps ? (
+              <button
+                aria-label="Logg inn med Vipps"
+                className="flex h-12 w-full items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-sm font-bold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#FF5B24] focus:ring-offset-2"
+                onClick={() => signIn("vipps", { callbackUrl })}
+                type="button"
+              >
                 <Image
                   alt="Logg inn med Vipps"
                   className="h-12 w-full object-contain"
@@ -283,10 +282,8 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
                   src={vippsLoginButtonAsset}
                   width={340}
                 />
-              ) : (
-                "Vipps Login kommer snart"
-              )}
-            </button>
+              </button>
+            ) : null}
           </div>
 
           <Link
@@ -332,7 +329,7 @@ function getAuthErrorMessage(errorCode: string) {
     EMAIL_NOT_VERIFIED: "E-posten din er ikke bekreftet ennå. Sjekk e-posten din før du logger inn.",
     AccessDenied: "Innloggingen ble avvist. Prøv igjen eller bruk en annen innloggingsmetode.",
     Callback: "Innloggingen kunne ikke fullføres. Prøv igjen, eller logg inn med e-post/passord.",
-    Configuration: "Innlogging er ikke riktig konfigurert akkurat nå. Prøv igjen senere.",
+    Configuration: "Innlogging er midlertidig utilgjengelig. Prøv igjen senere.",
   };
 
   return messages[errorCode] ?? "Kunne ikke logge inn. Sjekk e-post, passord og at kontoen er verifisert.";

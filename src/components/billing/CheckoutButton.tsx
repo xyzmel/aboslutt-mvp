@@ -99,7 +99,7 @@ function getCheckoutErrorMessage(error?: string) {
   }
 
   if (error === "PAYMENTS_NOT_CONFIGURED") {
-    return "Vipps-betaling er ikke ferdig konfigurert.";
+    return "Vipps-betaling er midlertidig utilgjengelig.";
   }
 
   if (error === "VIPPS_AGREEMENT_ERROR") {

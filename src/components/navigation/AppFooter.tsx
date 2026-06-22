@@ -63,7 +63,7 @@ export function AppFooter({ compact = false }: { compact?: boolean }) {
         <FooterColumn
           links={[
             ["Produkt", "/#produkt"],
-            ["Priser", "/pricing"],
+            ["Premium", "/pricing"],
             ["Logg inn", "/login"],
             ["Opprett konto", "/register"],
           ]}
@@ -73,7 +73,7 @@ export function AppFooter({ compact = false }: { compact?: boolean }) {
         <FooterColumn
           links={[
             ["Oversikt", "/dashboard"],
-            ["Importer e-post", "/import/email"],
+            ["E-postimport", "/import/email"],
             ["Innstillinger", "/settings"],
           ]}
           title="App"
@@ -93,7 +93,7 @@ export function AppFooter({ compact = false }: { compact?: boolean }) {
           links={[
             ["Start gratis", isLoggedIn ? "/dashboard" : "/register"],
             ["Se Premium", "/pricing"],
-            ["Gi tilbakemelding", isLoggedIn ? "/dashboard" : "/contact"],
+            ["Kontakt oss", "/contact"],
           ]}
           title="Kom i gang"
         />

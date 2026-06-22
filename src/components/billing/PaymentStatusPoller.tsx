@@ -231,7 +231,7 @@ function getStatusContent(
     return {
       eyebrow: "Bekreftet",
       title: "Premium er aktivert",
-      text: "Vipps-betalingen er bekreftet av Aboslutt, og Premium er aktivert på kontoen din. Tilgangen oppdateres nå automatisk.",
+      text: "Vipps-betalingen er bekreftet, og Premium er aktivert på kontoen din. Tilgangen oppdateres automatisk.",
       tone: "text-emerald-700",
     };
   }
@@ -258,7 +258,7 @@ function getStatusContent(
     return {
       eyebrow: "Ikke fullført",
       title: "Betalingen kunne ikke bekreftes",
-      text: `Vi finner ingen bekreftet betaling for dette forsøket. Premium aktiveres ikke fra retursiden. Kontakt ${siteConfig.contactEmail} hvis du mener betalingen er trukket.`,
+      text: `Vi finner ingen bekreftet betaling for dette forsøket. Premium aktiveres ikke før betalingen er bekreftet. Kontakt ${siteConfig.contactEmail} hvis du mener betalingen er trukket.`,
       tone: "text-[#C8102E]",
     };
   }
@@ -275,8 +275,8 @@ function getStatusContent(
   const pendingTitle = returnContext === "cancelled" ? "Sjekker om betalingen ble avbrutt" : "Bekrefter betalingen ...";
   const pendingText =
     verification === "unavailable"
-      ? "Vi prøver å hente verifisert status fra Aboslutt. Premium aktiveres ikke før betalingen er bekreftet server-side."
-      : "Vi sjekker betalingsstatusen server-side. Premium aktiveres først når Aboslutt har bekreftet betalingen hos Vipps.";
+      ? "Vi prøver å hente bekreftet status. Premium aktiveres ikke før betalingen er bekreftet."
+      : "Vi sjekker betalingsstatusen. Premium aktiveres først når betalingen er bekreftet hos Vipps.";
 
   return {
     eyebrow: "Behandler",

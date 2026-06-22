@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { PaymentStatusPoller } from "@/components/billing/PaymentStatusPoller";
 import { FunnelEvent } from "@/components/analytics/FunnelEvent";
+import { PaymentStatusPoller } from "@/components/billing/PaymentStatusPoller";
 import { PublicPageShell } from "@/components/public/PublicPageShell";
 
 export const metadata: Metadata = {
@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 export default function PaymentCancelledPage() {
   return (
     <PublicPageShell
-      intro="Vi sjekker den verifiserte betalingsstatusen før vi viser resultatet. Premium aktiveres aldri fra retursiden alene."
-      title="Betalingsstatus"
+      intro="Ingen betaling er fullført før statusen er bekreftet. Du kan prøve igjen eller gå tilbake til oversikten."
+      title="Betalingen ble avbrutt"
     >
       <FunnelEvent event="checkout_cancelled" />
       <PaymentStatusPoller returnContext="cancelled" />

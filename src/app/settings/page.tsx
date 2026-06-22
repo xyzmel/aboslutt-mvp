@@ -4,10 +4,11 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { SettingsClient } from "@/components/settings/SettingsClient";
 import { isAdminUser } from "@/lib/admin";
-import { isVippsConfigured } from "@/lib/auth-config-status";
 import { isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
 import { getCurrentAppUser } from "@/lib/current-user";
 import { logger } from "@/lib/logger";
+import { getMicrosoftProviderName, isMicrosoftGraphConfigured } from "@/lib/microsoft-graph";
+import { sanitizeMicrosoftMailboxAddress } from "@/lib/microsoft-oauth-config.mjs";
 import { canUseEmailReminders, canUseMonthlySummary } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 
@@ -34,7 +35,12 @@ export default async function SettingsPage() {
   }
 
   let googleAccount: { scope: string | null; refresh_token: string | null } | null = null;
-  let vippsAccount: { provider: string } | null = null;
+  let microsoftAccount: {
+    access_token: string | null;
+    refresh_token: string | null;
+    expires_at: number | null;
+    providerEmail: string | null;
+  } | null = null;
   let notificationPreferences = {
     emailRemindersEnabled: true,
     reminderDaysBefore: 3,
@@ -43,14 +49,14 @@ export default async function SettingsPage() {
   let billingAgreement: SettingsBillingAgreement | null = null;
 
   try {
-    [googleAccount, vippsAccount] = await Promise.all([
+    [googleAccount, microsoftAccount] = await Promise.all([
       prisma.account.findFirst({
         where: { userId: currentUser.id, provider: "google" },
         select: { scope: true, refresh_token: true },
       }),
       prisma.account.findFirst({
-        where: { userId: currentUser.id, provider: "vipps" },
-        select: { provider: true },
+        where: { userId: currentUser.id, provider: getMicrosoftProviderName() },
+        select: { access_token: true, refresh_token: true, expires_at: true, providerEmail: true },
       }),
     ]);
   } catch (error) {
@@ -84,14 +90,19 @@ export default async function SettingsPage() {
     logServerError("settings:billingAgreement", error, currentUser.id);
   }
 
-  const gmailScopeConnected = Boolean(
-    googleAccount?.scope?.split(" ").includes(gmailReadonlyScope),
+  const gmailScopeConnected = Boolean(googleAccount?.scope?.split(" ").includes(gmailReadonlyScope));
+  const googleReconnectRequired = Boolean(googleAccount && gmailScopeConnected && !googleAccount.refresh_token);
+  const microsoftConfigured = isMicrosoftGraphConfigured();
+  const microsoftConnected = Boolean(
+    microsoftConfigured && microsoftAccount?.access_token && microsoftAccount.refresh_token,
   );
-  const googleReconnectRequired = Boolean(
-    googleAccount && gmailScopeConnected && !googleAccount.refresh_token,
+  const microsoftReconnectRequired = Boolean(
+    microsoftConfigured && microsoftAccount && (!microsoftAccount.access_token || !microsoftAccount.refresh_token),
   );
+  const microsoftEmail = sanitizeMicrosoftMailboxAddress(microsoftAccount?.providerEmail);
   const emailRemindersAvailable = canUseEmailReminders(currentUser);
   const monthlySummaryAvailable = canUseMonthlySummary(currentUser);
+
   notificationPreferences = {
     ...notificationPreferences,
     emailRemindersEnabled: emailRemindersAvailable && notificationPreferences.emailRemindersEnabled,
@@ -101,24 +112,25 @@ export default async function SettingsPage() {
   return (
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] text-[#0D1B2A]">
       <AppHeader />
-
       <SettingsClient
-        email={currentUser.email}
         billingAgreement={billingAgreement}
-        emailRemindersEnabled={notificationPreferences.emailRemindersEnabled}
+        email={currentUser.email}
         emailRemindersAvailable={emailRemindersAvailable}
+        emailRemindersEnabled={notificationPreferences.emailRemindersEnabled}
         gmailScopeConnected={gmailScopeConnected}
         googleConnected={gmailScopeConnected && !googleReconnectRequired}
         googleReconnectRequired={googleReconnectRequired}
         isAdmin={isAdminUser(currentUser)}
+        microsoftConfigured={microsoftConfigured}
+        microsoftConnected={microsoftConnected}
+        microsoftEmail={microsoftEmail}
+        microsoftReconnectRequired={microsoftReconnectRequired}
         monthlySummaryAvailable={monthlySummaryAvailable}
         monthlySummaryEnabled={notificationPreferences.monthlySummaryEnabled}
         name={currentUser.name}
+        paymentsConfigured={isVippsRecurringConfigured()}
         plan={currentUser.plan}
         reminderDaysBefore={notificationPreferences.reminderDaysBefore}
-        paymentsConfigured={isVippsRecurringConfigured()}
-        vippsConnected={Boolean(vippsAccount)}
-        vippsConfigured={isVippsConfigured()}
       />
       <AppFooter compact />
     </main>
@@ -145,16 +157,7 @@ async function getSettingsBillingAgreement(userId: string): Promise<SettingsBill
         status: { in: ["active", "cancellation_pending"] },
       },
       orderBy: { updatedAt: "desc" },
-      select: {
-        plan: true,
-        status: true,
-        priceNok: true,
-        interval: true,
-        currency: true,
-        activatedAt: true,
-        cancelledAt: true,
-        expiresAt: true,
-      },
+      select: billingAgreementSelect,
     })) ??
     (await prisma.billingAgreement.findFirst({
       where: {
@@ -162,16 +165,7 @@ async function getSettingsBillingAgreement(userId: string): Promise<SettingsBill
         provider: "vipps",
       },
       orderBy: { updatedAt: "desc" },
-      select: {
-        plan: true,
-        status: true,
-        priceNok: true,
-        interval: true,
-        currency: true,
-        activatedAt: true,
-        cancelledAt: true,
-        expiresAt: true,
-      },
+      select: billingAgreementSelect,
     }));
 
   if (!agreement) {
@@ -189,6 +183,17 @@ async function getSettingsBillingAgreement(userId: string): Promise<SettingsBill
     expiresAt: agreement.expiresAt?.toISOString() ?? null,
   };
 }
+
+const billingAgreementSelect = {
+  plan: true,
+  status: true,
+  priceNok: true,
+  interval: true,
+  currency: true,
+  activatedAt: true,
+  cancelledAt: true,
+  expiresAt: true,
+} as const;
 
 function SettingsLoadError() {
   return (

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function PaymentThanksPage() {
   return (
     <PublicPageShell
-      intro="Vi sjekker betalingsstatusen server-side. Premium aktiveres bare når Aboslutt har bekreftet betalingen hos Vipps."
+      intro="Vi sjekker betalingsstatusen før Premium aktiveres. Tilgangen åpnes bare når betalingen er bekreftet."
       title="Betalingen behandles"
     >
       <PaymentStatusPoller returnContext="thanks" />

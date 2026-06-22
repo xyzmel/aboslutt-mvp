@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.aboslutt.no"),
   title: {
-    default: "Aboslutt | Få kontroll på abonnementene dine",
+    default: "Aboslutt",
     template: "%s | Aboslutt",
   },
   description:
@@ -15,9 +15,8 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Aboslutt | Få kontroll på abonnementene dine",
-    description:
-      "Oppdag hva du betaler for. Kutt det du ikke trenger. Hold oversikten på ett sted.",
+    title: "Aboslutt",
+    description: "Oppdag hva du betaler for. Kutt det du ikke trenger. Hold oversikten på ett sted.",
     url: "https://www.aboslutt.no",
     siteName: "Aboslutt",
     locale: "nb_NO",

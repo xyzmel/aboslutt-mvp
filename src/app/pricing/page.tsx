@@ -18,7 +18,7 @@ const valuePoints = [
 ];
 
 export const metadata: Metadata = {
-  title: "Priser",
+  title: "Premium",
   description:
     "Start gratis med manuell abonnementskontroll, eller oppgrader til Aboslutt Premium med Vipps.",
   alternates: { canonical: "/pricing" },
