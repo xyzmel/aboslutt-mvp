@@ -30,6 +30,7 @@ model User {
   feedback      Feedback[]
   ignoredImportCandidates IgnoredImportCandidate[]
   importFeedback ImportFeedback[]
+  outlookImportScans OutlookImportScan[]
   cancellationRequests CancellationRequest[]
   cancellationAuditLogs CancellationAuditLog[]
   billingAgreements BillingAgreement[]
@@ -123,6 +124,22 @@ model ImportFeedback {
   @@index([userId])
   @@index([sourceProvider])
   @@index([issueType])
+  @@index([createdAt])
+}
+
+model OutlookImportScan {
+  id         String   @id @default(cuid())
+  userId     String
+  candidates Json
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  importedAt DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
   @@index([createdAt])
 }
 

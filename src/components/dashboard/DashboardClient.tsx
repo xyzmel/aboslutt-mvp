@@ -676,25 +676,6 @@ export function DashboardClient() {
               <UpcomingPayments subscriptions={upcomingPayments} />
             </div>
 
-            <div id="cancellations">
-              {activeCancellations.length > 0 ? (
-                <CancellationFollowUpSection
-                  onAction={updateCancellationRequest}
-                  subscriptions={activeCancellations}
-                />
-              ) : (
-                <DashboardEmptyState
-                  actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
-                  actionLabel="Start en oppsigelse"
-                  description="Oppsigelser du starter, vises her med status og neste steg."
-                  eyebrow="AKTIVE OPPSIGELSER"
-                  title="Ingen aktive oppsigelser"
-                />
-              )}
-
-              <CompletedCancellationsSection subscriptions={completedCancellations} />
-            </div>
-
             <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
               {filters.map((filter) => (
                 <button
@@ -747,6 +728,26 @@ export function DashboardClient() {
                 title="Alle abonnementer er avsluttet"
               />
             ) : null}
+
+            <div id="cancellations">
+              {activeCancellations.length > 0 ? (
+                <CancellationFollowUpSection
+                  onAction={updateCancellationRequest}
+                  subscriptions={activeCancellations}
+                />
+              ) : (
+                <DashboardEmptyState
+                  actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
+                  actionLabel="Start en oppsigelse"
+                  compact
+                  description="Oppsigelser du starter, vises her med status og neste steg."
+                  eyebrow="AKTIVE OPPSIGELSER"
+                  title="Ingen aktive oppsigelser"
+                />
+              )}
+
+              <CompletedCancellationsSection subscriptions={completedCancellations} />
+            </div>
               </>
             ) : null}
 
@@ -1089,6 +1090,7 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
       <DashboardEmptyState
         actionHref="#subscriptions"
         actionLabel="Se abonnementer"
+        compact
         description="Fullførte oppsigelser og dokumentasjon samles her."
         eyebrow="HISTORIKK"
         title="Ingen fullførte oppsigelser ennå"
@@ -1169,6 +1171,7 @@ function DashboardEmptyState({
   actionHref,
   actionLabel,
   secondaryAction,
+  compact = false,
 }: {
   title: string;
   description: string;
@@ -1176,7 +1179,31 @@ function DashboardEmptyState({
   actionHref?: string;
   actionLabel?: string;
   secondaryAction?: ReactNode;
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <section className="mt-4 rounded-2xl border border-dashed border-[#C8D4E2] bg-white px-4 py-4 text-sm text-[#5F6F82] shadow-sm sm:flex sm:min-h-[118px] sm:items-center sm:justify-between sm:gap-5 sm:px-5">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>
+          <h2 className="mt-1 text-lg font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
+          <p className="mt-1 max-w-2xl leading-6">{description}</p>
+        </div>
+        {actionHref && actionLabel ? (
+          <div className="mt-4 shrink-0 sm:mt-0">
+            <a
+              className="inline-flex w-full justify-center rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 sm:w-auto"
+              href={actionHref}
+            >
+              {actionLabel}
+            </a>
+            {secondaryAction}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
   return (
     <section className="mt-6 rounded-2xl border border-dashed border-[#C8D4E2] bg-white p-5 text-sm text-[#5F6F82] shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>

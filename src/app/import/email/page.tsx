@@ -1,7 +1,8 @@
 "use client";
 
 import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
 import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
@@ -31,6 +32,40 @@ type PremiumGateState = {
   limit?: number | null;
 };
 
+type MicrosoftImportState =
+  | "not_connected"
+  | "connecting"
+  | "connected"
+  | "scanning"
+  | "scan_failed"
+  | "no_candidates"
+  | "review_results"
+  | "disconnected";
+
+type OutlookCandidate = {
+  id: string;
+  providerName: string;
+  senderDomain: string | null;
+  subject: string;
+  receivedDate: string | null;
+  amount: number | null;
+  currency: string | null;
+  billingInterval: "monthly" | "yearly" | "unknown";
+  confidence: "high" | "medium" | "low";
+  reasons: string[];
+  grouped: boolean;
+  relatedMessageCount: number;
+};
+
+type OutlookCandidateDraft = {
+  name: string;
+  price: string;
+  currency: string;
+  billingInterval: string;
+  nextPayment: string;
+  category: string;
+};
+
 const categoryLabels: Record<EmailSubscriptionCandidate["category"], string> = {
   streaming: "Streaming",
   software: "Programvare",
@@ -48,6 +83,7 @@ const intervalLabels: Record<EmailSubscriptionCandidate["billingInterval"], stri
 export default function EmailImportPage() {
   const { showToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [emailText, setEmailText] = useState("");
   const [candidates, setCandidates] = useState<EmailSubscriptionCandidate[]>([]);
@@ -60,6 +96,13 @@ export default function EmailImportPage() {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailScopeConnected, setGmailScopeConnected] = useState(false);
   const [gmailScanAvailable, setGmailScanAvailable] = useState(true);
+  const [microsoftConnected, setMicrosoftConnected] = useState(false);
+  const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
+  const [microsoftImportState, setMicrosoftImportState] = useState<MicrosoftImportState>("not_connected");
+  const [microsoftMessage, setMicrosoftMessage] = useState<string | null>(null);
+  const [microsoftMessagesChecked, setMicrosoftMessagesChecked] = useState<number | null>(null);
+  const [microsoftCandidates, setMicrosoftCandidates] = useState<OutlookCandidate[]>([]);
+  const [microsoftScanId, setMicrosoftScanId] = useState<string | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<EmailSubscriptionCandidate | null>(null);
   const [candidateDraft, setCandidateDraft] = useState<CandidateDraft | null>(null);
   const [isSavingCandidate, setIsSavingCandidate] = useState(false);
@@ -86,14 +129,45 @@ export default function EmailImportPage() {
         googleConnected: boolean;
         gmailScopeConnected: boolean;
         gmailScanAvailable?: boolean;
+        microsoftConnected?: boolean;
+        microsoftConfigured?: boolean;
       };
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
+      setMicrosoftConnected(Boolean(result.microsoftConnected));
+      setMicrosoftConfigured(Boolean(result.microsoftConfigured));
+      const microsoft = searchParams.get("microsoft");
+
+      if (microsoft === "connected") {
+        setMicrosoftConnected(true);
+        setMicrosoftImportState("connected");
+        setMicrosoftMessage("Microsoft er koblet til. Du kan starte en manuell skann når du er klar.");
+        showToast({
+          title: "Microsoft er koblet til",
+          message: "Outlook-tilgangen er klar.",
+          tone: "success",
+        });
+        return;
+      }
+
+      if (microsoft === "cancelled") {
+        setMicrosoftImportState("not_connected");
+        setMicrosoftMessage("Microsoft-koblingen ble avbrutt. Ingen e-post ble lest.");
+        return;
+      }
+
+      if (microsoft) {
+        setMicrosoftImportState("scan_failed");
+        setMicrosoftMessage("Microsoft-koblingen kunne ikke fullføres. Prøv igjen.");
+        return;
+      }
+
+      setMicrosoftImportState(result.microsoftConnected ? "connected" : "not_connected");
     }
 
     loadConnectionStatus();
-  }, [router, status]);
+  }, [router, searchParams, showToast, status]);
 
   const visibleCandidates = useMemo(
     () => candidates.filter((candidate) => !hiddenCandidateKeys.includes(getCandidateKey(candidate))),
@@ -177,6 +251,86 @@ export default function EmailImportPage() {
       showToast({ title: "Skanning feilet", message, tone: "error" });
     } finally {
       setIsScanningGmail(false);
+    }
+  }
+
+  function connectMicrosoft() {
+    setMicrosoftImportState("connecting");
+    setMicrosoftMessage("Sender deg til Microsoft for sikker godkjenning.");
+    window.location.href = "/api/import/microsoft/connect";
+  }
+
+  async function scanMicrosoft() {
+    setMicrosoftImportState("scanning");
+    setMicrosoftMessage(null);
+    setMicrosoftMessagesChecked(null);
+
+    try {
+      const response = await fetch("/api/import/microsoft/scan", { method: "POST" });
+      const result = (await response.json().catch(() => ({}))) as {
+        status?: MicrosoftImportState;
+        scanId?: string;
+        messagesChecked?: number;
+        candidates?: OutlookCandidate[];
+        message?: string;
+        partial?: boolean;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.message ?? "Kunne ikke skanne Outlook akkurat nå.");
+      }
+
+      const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+      setMicrosoftImportState(candidates.length > 0 ? "review_results" : "no_candidates");
+      setMicrosoftScanId(result.scanId ?? null);
+      setMicrosoftMessagesChecked(result.messagesChecked ?? 0);
+      setMicrosoftCandidates(candidates);
+      setMicrosoftMessage(result.message ?? "Outlook-skanningen er fullført.");
+      showToast({
+        title: candidates.length > 0 ? "Outlook-forslag funnet" : "Ingen sikre Outlook-funn",
+        message:
+          candidates.length > 0
+            ? `${candidates.length} mulige abonnementer er klare for gjennomgang.`
+            : "Vi fant ingen sikre abonnementer denne gangen.",
+        tone: candidates.length > 0 ? "success" : "info",
+      });
+    } catch {
+      const message = "Kunne ikke skanne Outlook akkurat nå.";
+      setMicrosoftImportState("scan_failed");
+      setMicrosoftScanId(null);
+      setMicrosoftMessage(message);
+      setMicrosoftCandidates([]);
+      showToast({ title: "Skanning feilet", message, tone: "error" });
+    }
+  }
+
+  async function disconnectMicrosoft() {
+    setMicrosoftImportState("connecting");
+
+    try {
+      const response = await fetch("/api/import/microsoft/disconnect", { method: "POST" });
+
+      if (!response.ok) {
+        throw new Error("DISCONNECT_FAILED");
+      }
+
+      setMicrosoftConnected(false);
+      setMicrosoftImportState("disconnected");
+      setMicrosoftScanId(null);
+      setMicrosoftMessage("Microsoft er koblet fra. Lagrede Microsoft-token er fjernet.");
+      setMicrosoftCandidates([]);
+      showToast({
+        title: "Microsoft er koblet fra",
+        message: "Du kan koble til igjen når du vil.",
+        tone: "success",
+      });
+    } catch {
+      setMicrosoftImportState(microsoftConnected ? "connected" : "not_connected");
+      showToast({
+        title: "Frakobling feilet",
+        message: "Kunne ikke koble fra Microsoft akkurat nå.",
+        tone: "error",
+      });
     }
   }
 
@@ -324,9 +478,51 @@ export default function EmailImportPage() {
           Finn abonnementer fra kvitteringer
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-          Skann Gmail med read-only tilgang, eller lim inn tekst fra en kvittering.
-          Aboslutt lagrer ikke rå e-postinnhold, bare abonnementet du bekrefter.
+          Skann Gmail med read-only tilgang, koble til Outlook med Microsoft, eller lim inn tekst fra en kvittering.
+          Aboslutt lagrer ikke rå e-postinnhold, og ingenting importeres før du bekrefter det.
         </p>
+
+        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-extrabold tracking-tight">Velg e-postkobling</h2>
+              <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+                Aboslutt leser bare e-post for å finne mulige abonnementer. Vi sender, endrer eller sletter aldri
+                e-post, og du kan koble fra Microsoft når som helst.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold">
+                <Link className="text-[#C8102E] hover:underline" href="/privacy">
+                  Personvern
+                </Link>
+                <Link className="text-[#C8102E] hover:underline" href="/contact">
+                  Support
+                </Link>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:w-[26rem]">
+              <button
+                className="rounded-xl border border-[#DBE4EE] bg-white px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
+                onClick={() => signIn("google", { callbackUrl: "/import/email" })}
+                type="button"
+              >
+                Fortsett med Google
+              </button>
+              <button
+                className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!microsoftConfigured || microsoftImportState === "connecting"}
+                onClick={connectMicrosoft}
+                type="button"
+              >
+                {microsoftImportState === "connecting" ? "Kobler til..." : "Fortsett med Microsoft"}
+              </button>
+            </div>
+          </div>
+          {!microsoftConfigured ? (
+            <p className="mt-3 text-xs font-semibold text-[#8A4B13]">
+              Microsoft-import er ikke ferdig konfigurert ennå.
+            </p>
+          ) : null}
+        </div>
 
         <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -407,6 +603,20 @@ export default function EmailImportPage() {
             </p>
           ) : null}
         </div>
+
+        <MicrosoftImportPanel
+          configured={microsoftConfigured}
+          connected={microsoftConnected}
+          key={microsoftScanId ?? microsoftImportState}
+          messagesChecked={microsoftMessagesChecked}
+          message={microsoftMessage}
+          candidates={microsoftCandidates}
+          scanId={microsoftScanId}
+          onConnect={connectMicrosoft}
+          onDisconnect={disconnectMicrosoft}
+          onScan={scanMicrosoft}
+          state={microsoftImportState}
+        />
 
         <form
           className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]"
@@ -504,6 +714,578 @@ export default function EmailImportPage() {
       <AppFooter compact />
     </main>
   );
+}
+
+function MicrosoftImportPanel({
+  configured,
+  connected,
+  state,
+  message,
+  messagesChecked,
+  candidates,
+  scanId,
+  onConnect,
+  onScan,
+  onDisconnect,
+}: {
+  configured: boolean;
+  connected: boolean;
+  state: MicrosoftImportState;
+  message: string | null;
+  messagesChecked: number | null;
+  candidates: OutlookCandidate[];
+  scanId: string | null;
+  onConnect: () => void;
+  onScan: () => void;
+  onDisconnect: () => void;
+}) {
+  const { showToast } = useToast();
+  const content = getMicrosoftStateContent({ configured, connected, state, messagesChecked });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
+  const [editingIds, setEditingIds] = useState<string[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, OutlookCandidateDraft>>(() =>
+    Object.fromEntries(candidates.map((candidate) => [candidate.id, toOutlookDraft(candidate)])),
+  );
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [itemResults, setItemResults] = useState<Record<string, string>>({});
+  const [isImporting, setIsImporting] = useState(false);
+  const visibleCandidates = candidates.filter((candidate) => !ignoredIds.includes(candidate.id));
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function selectHighConfidence() {
+    setSelectedIds(visibleCandidates.filter((candidate) => candidate.confidence === "high").map((candidate) => candidate.id));
+  }
+
+  function updateDraft(id: string, update: Partial<OutlookCandidateDraft>) {
+    setDrafts((current) => {
+      const existing = current[id];
+      const source = candidates.find((candidate) => candidate.id === id);
+
+      if (!existing && !source) {
+        return current;
+      }
+
+      const base = existing ?? (source ? toOutlookDraft(source) : null);
+
+      if (!base) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [id]: { ...base, ...update },
+      };
+    });
+  }
+
+  async function importSelected() {
+    setImportMessage(null);
+    setItemResults({});
+
+    if (!scanId) {
+      setImportMessage("Skanningen mangler importreferanse. Skann Outlook på nytt.");
+      return;
+    }
+
+    if (selectedIds.length === 0) {
+      setImportMessage("Velg minst ett forslag før du importerer.");
+      return;
+    }
+
+    const validationError = selectedIds
+      .map((id) => validateOutlookDraft(drafts[id]))
+      .find((error) => error !== null);
+
+    if (validationError) {
+      setImportMessage(validationError);
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const response = await fetch("/api/import/microsoft/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scanId,
+          candidates: visibleCandidates.map((candidate) => ({
+            id: candidate.id,
+            selected: selectedIds.includes(candidate.id),
+            ...(drafts[candidate.id] ?? toOutlookDraft(candidate)),
+          })),
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        results?: { id: string; ok: boolean; message?: string; error?: string }[];
+      };
+
+      setImportMessage(result.message ?? "Importen er behandlet.");
+      setItemResults(
+        Object.fromEntries(
+          (result.results ?? []).map((item) => [
+            item.id,
+            item.ok ? "Importert" : item.message ?? getOutlookImportErrorLabel(item.error),
+          ]),
+        ),
+      );
+
+      showToast({
+        title: response.ok ? "Outlook-import behandlet" : "Import feilet",
+        message: result.message ?? "Se resultatene i listen.",
+        tone: response.ok ? "success" : "error",
+      });
+    } catch {
+      const message = "Kunne ikke importere Outlook-forslag akkurat nå.";
+      setImportMessage(message);
+      showToast({ title: "Import feilet", message, tone: "error" });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className={`text-xs font-bold uppercase tracking-wide ${content.tone}`}>{content.eyebrow}</p>
+          <h2 className="mt-1 text-lg font-extrabold tracking-tight">Outlook-import</h2>
+          <p className="mt-2 text-sm leading-6 text-[#5F6F82]">{content.description}</p>
+          <ul className="mt-3 space-y-1 text-xs font-semibold text-[#5F6F82]">
+            <li>- Aboslutt bruker delegert Microsoft Graph-tilgang til innlogget brukers e-post.</li>
+            <li>- Vi ber bare om lesetilgang til e-post, ikke sending, endring eller sletting.</li>
+            <li>- Ingenting lagres som abonnement før du bekrefter det selv.</li>
+          </ul>
+          {message ? <p className="mt-3 text-sm font-semibold text-[#0D1B2A]">{message}</p> : null}
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:w-48">
+          {!connected ? (
+            <button
+              className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!configured || state === "connecting"}
+              onClick={onConnect}
+              type="button"
+            >
+              {state === "connecting" ? "Kobler til..." : "Fortsett med Microsoft"}
+            </button>
+          ) : (
+            <>
+              <LoadingButton
+                isLoading={state === "scanning"}
+                loadingLabel="Skanner..."
+                onClick={onScan}
+                type="button"
+              >
+                Skann Outlook
+              </LoadingButton>
+              <button
+                className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
+                disabled={state === "connecting" || state === "scanning"}
+                onClick={onDisconnect}
+                type="button"
+              >
+                Koble fra
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {visibleCandidates.length > 0 ? (
+        <div className="mt-5 grid gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-bold text-[#0D1B2A]">
+              {messagesChecked ?? 0} meldinger skannet · {visibleCandidates.length} mulige funn
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                onClick={selectHighConfidence}
+                type="button"
+              >
+                Velg alle sikre funn
+              </button>
+              <LoadingButton isLoading={isImporting} loadingLabel="Importerer..." onClick={importSelected} type="button">
+                Importer valgte
+              </LoadingButton>
+              <button
+                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                onClick={() => {
+                  setSelectedIds([]);
+                  setImportMessage("Import avbrutt. Ingen forslag ble lagret.");
+                }}
+                type="button"
+              >
+                Avbryt
+              </button>
+            </div>
+          </div>
+          {importMessage ? (
+            <p className="rounded-xl bg-[#F7F9FC] px-4 py-3 text-sm font-semibold text-[#0D1B2A] ring-1 ring-[#DBE4EE]">
+              {importMessage}
+            </p>
+          ) : null}
+          {visibleCandidates.map((candidate) => {
+            const draft = drafts[candidate.id] ?? toOutlookDraft(candidate);
+            const isEditing = editingIds.includes(candidate.id);
+
+            return (
+              <article className="rounded-xl bg-[#F7F9FC] p-4 ring-1 ring-[#DBE4EE]" key={candidate.id}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-2 text-sm font-bold text-[#0D1B2A]">
+                      <input
+                        checked={selectedIds.includes(candidate.id)}
+                        className="h-4 w-4 accent-[#C8102E]"
+                        onChange={() => toggleSelected(candidate.id)}
+                        type="checkbox"
+                      />
+                      Velg
+                    </label>
+                    <h3 className="font-extrabold text-[#0D1B2A]">{candidate.providerName}</h3>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#4A5568] ring-1 ring-[#DBE4EE]">
+                      {getOutlookConfidenceLabel(candidate.confidence)}
+                    </span>
+                    {candidate.grouped ? (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                        {candidate.relatedMessageCount} relaterte
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-[#5F6F82]">{candidate.subject}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#5F6F82]">
+                    {candidate.senderDomain ?? "Ukjent avsender"}
+                    {candidate.receivedDate ? ` · ${new Date(candidate.receivedDate).toLocaleDateString("nb-NO")}` : ""}
+                  </p>
+                  <ul className="mt-3 space-y-1 text-xs font-semibold text-[#5F6F82]">
+                    {candidate.reasons.map((reason) => (
+                      <li key={reason}>- {reason}</li>
+                    ))}
+                  </ul>
+                  {itemResults[candidate.id] ? (
+                    <p className="mt-3 text-sm font-bold text-[#0D1B2A]">{itemResults[candidate.id]}</p>
+                  ) : null}
+                </div>
+                <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#DBE4EE] sm:text-right">
+                  <p className="text-lg font-black text-[#0D1B2A]">
+                    {candidate.amount ? `${candidate.amount} ${candidate.currency ?? ""}` : "Ukjent pris"}
+                  </p>
+                  <p className="mt-1 font-semibold text-[#5F6F82]">
+                    {getOutlookIntervalLabel(candidate.billingInterval)}
+                  </p>
+                </div>
+              </div>
+              {isEditing ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <OutlookDraftInput label="Navn" value={draft.name} onChange={(name) => updateDraft(candidate.id, { name })} />
+                  <OutlookDraftInput
+                    inputMode="numeric"
+                    label="Pris"
+                    value={draft.price}
+                    onChange={(price) => updateDraft(candidate.id, { price })}
+                  />
+                  <OutlookDraftSelect
+                    label="Valuta"
+                    onChange={(currency) => updateDraft(candidate.id, { currency })}
+                    options={["NOK", "USD", "EUR", "GBP", "SEK", "DKK"]}
+                    value={draft.currency}
+                  />
+                  <OutlookDraftSelect
+                    label="Intervall"
+                    onChange={(billingInterval) => updateDraft(candidate.id, { billingInterval })}
+                    options={["monthly", "yearly", "unknown"]}
+                    value={draft.billingInterval}
+                  />
+                  <OutlookDraftInput
+                    label="Neste trekk"
+                    onChange={(nextPayment) => updateDraft(candidate.id, { nextPayment })}
+                    type="date"
+                    value={draft.nextPayment}
+                  />
+                  <OutlookDraftSelect
+                    label="Kategori"
+                    onChange={(category) => updateDraft(candidate.id, { category })}
+                    options={["streaming", "software", "news", "health"]}
+                    value={draft.category}
+                  />
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                  onClick={() =>
+                    setEditingIds((current) =>
+                      current.includes(candidate.id)
+                        ? current.filter((id) => id !== candidate.id)
+                        : [...current, candidate.id],
+                    )
+                  }
+                  type="button"
+                >
+                  {isEditing ? "Lukk redigering" : "Rediger"}
+                </button>
+                <button
+                  className="rounded-xl border border-[#F3C3CC] px-4 py-2.5 text-sm font-bold text-[#C8102E] hover:bg-[#F5E6E9]"
+                  onClick={() => {
+                    setIgnoredIds((current) => [...current, candidate.id]);
+                    setSelectedIds((current) => current.filter((id) => id !== candidate.id));
+                  }}
+                  type="button"
+                >
+                  Ignorer
+                </button>
+              </div>
+              </article>
+            );
+          })}
+          <p className="text-xs font-semibold text-[#5F6F82]">
+            Ingenting importeres før du velger forslag og trykker Importer valgte.
+          </p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function getMicrosoftStateContent({
+  configured,
+  connected,
+  state,
+  messagesChecked,
+}: {
+  configured: boolean;
+  connected: boolean;
+  state: MicrosoftImportState;
+  messagesChecked: number | null;
+}) {
+  if (!configured) {
+    return {
+      eyebrow: "Ikke konfigurert",
+      description: "Microsoft-import er klar i grensesnittet, men mangler serverkonfigurasjon.",
+      tone: "text-[#8A4B13]",
+    };
+  }
+
+  if (state === "connecting") {
+    return {
+      eyebrow: "Kobler til",
+      description: "Du sendes til Microsoft for å godkjenne lesetilgang til Outlook.",
+      tone: "text-[#C8102E]",
+    };
+  }
+
+  if (state === "scanning") {
+    return {
+      eyebrow: "Skanner",
+      description: "Vi leser nylige Outlook-meldinger og finner mulige abonnementer du kan vurdere.",
+      tone: "text-[#C8102E]",
+    };
+  }
+
+  if (state === "scan_failed") {
+    return {
+      eyebrow: "Feilet",
+      description: "Outlook kunne ikke skannes akkurat nå. Prøv igjen eller koble til på nytt.",
+      tone: "text-[#C8102E]",
+    };
+  }
+
+  if (state === "no_candidates") {
+    return {
+      eyebrow: "Ingen sikre funn",
+      description: "Skanningen ble fullført, men reglene fant ingen tydelige abonnementer.",
+      tone: "text-[#5F6F82]",
+    };
+  }
+
+  if (state === "review_results") {
+    return {
+      eyebrow: "Klar til gjennomgang",
+      description: `${messagesChecked ?? 0} meldinger ble skannet. Velg og rediger forslagene du vil importere.`,
+      tone: "text-emerald-700",
+    };
+  }
+
+  if (state === "disconnected") {
+    return {
+      eyebrow: "Frakoblet",
+      description: "Microsoft er koblet fra. Du kan koble til igjen når du vil.",
+      tone: "text-[#5F6F82]",
+    };
+  }
+
+  if (connected || state === "connected") {
+    return {
+      eyebrow: "Tilkoblet",
+      description: "Microsoft er koblet til. Du kan starte en manuell testskann når du er klar.",
+      tone: "text-emerald-700",
+    };
+  }
+
+  return {
+    eyebrow: "Ikke tilkoblet",
+    description: "Koble til Microsoft for å forberede Outlook-import. Dette starter ikke automatisk skanning.",
+    tone: "text-[#5F6F82]",
+  };
+}
+
+function getOutlookConfidenceLabel(confidence: OutlookCandidate["confidence"]) {
+  if (confidence === "high") {
+    return "Høy tillit";
+  }
+
+  if (confidence === "medium") {
+    return "Middels tillit";
+  }
+
+  return "Lav tillit";
+}
+
+function getOutlookIntervalLabel(interval: OutlookCandidate["billingInterval"]) {
+  if (interval === "monthly") {
+    return "Månedlig";
+  }
+
+  if (interval === "yearly") {
+    return "Årlig";
+  }
+
+  return "Ukjent intervall";
+}
+
+function toOutlookDraft(candidate: OutlookCandidate): OutlookCandidateDraft {
+  return {
+    name: candidate.providerName,
+    price: candidate.amount ? String(Math.round(candidate.amount)) : "",
+    currency: candidate.currency ?? "NOK",
+    billingInterval: candidate.billingInterval,
+    nextPayment: "",
+    category: inferOutlookCategory(candidate.providerName),
+  };
+}
+
+function validateOutlookDraft(draft: OutlookCandidateDraft | undefined) {
+  if (!draft) {
+    return "Forslaget mangler redigeringsdata.";
+  }
+
+  if (!draft.name.trim()) {
+    return "Navn må fylles ut.";
+  }
+
+  const price = Number(draft.price);
+  if (!Number.isInteger(price) || price < 0) {
+    return "Pris må være et heltall.";
+  }
+
+  if (draft.nextPayment && !/^\d{4}-\d{2}-\d{2}$/.test(draft.nextPayment)) {
+    return "Neste trekk må være tom eller en gyldig dato.";
+  }
+
+  return null;
+}
+
+function inferOutlookCategory(name: string) {
+  if (/\b(netflix|spotify|youtube|disney|viaplay|storytel|tv 2|hbo|max)\b/i.test(name)) {
+    return "streaming";
+  }
+
+  if (/\b(sats|fitness|gym|strava)\b/i.test(name)) {
+    return "health";
+  }
+
+  return "software";
+}
+
+function getOutlookImportErrorLabel(error?: string) {
+  if (error === "DUPLICATE_SUBSCRIPTION") {
+    return "Finnes allerede.";
+  }
+
+  if (error === "VALIDATION_ERROR") {
+    return "Må rettes før import.";
+  }
+
+  if (error === "PLAN_LIMIT_REACHED") {
+    return "Gratisgrensen er nådd.";
+  }
+
+  return "Kunne ikke importeres.";
+}
+
+function OutlookDraftInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  inputMode,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  inputMode?: "numeric";
+}) {
+  return (
+    <label className="text-sm font-semibold text-[#4A5568]">
+      {label}
+      <input
+        className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
+        inputMode={inputMode}
+        onChange={(event) => onChange(event.target.value)}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function OutlookDraftSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-sm font-semibold text-[#4A5568]">
+      {label}
+      <select
+        className="mt-2 w-full rounded-xl border border-[#DBE4EE] bg-white px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {getOutlookOptionLabel(option)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function getOutlookOptionLabel(option: string) {
+  const labels: Record<string, string> = {
+    monthly: "Månedlig",
+    yearly: "Årlig",
+    unknown: "Ukjent",
+    streaming: "Streaming",
+    software: "Programvare",
+    news: "Nyheter",
+    health: "Helse",
+  };
+
+  return labels[option] ?? option;
 }
 
 function CandidateGroup({

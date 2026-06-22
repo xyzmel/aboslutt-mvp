@@ -42,6 +42,13 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GMAIL_IMPORT_DEBUG=false
 
+# Microsoft Outlook import. Authorization Code Flow med delegated Graph scopes.
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_TENANT_ID=common
+MICROSOFT_REDIRECT_URI=https://www.aboslutt.no/api/import/microsoft/callback
+MICROSOFT_TOKEN_ENCRYPTION_KEY=
+
 # Vipps Login. Bekreft nøyaktige URL-er i Vipps MobilePay developer portal.
 # Test eksempel:
 # VIPPS_WELL_KNOWN_URL=https://apitest.vipps.no/access-management-1.0/access/.well-known/openid-configuration
@@ -284,6 +291,39 @@ GOOGLE_CLIENT_SECRET=...
 ```
 
 Gmail read-only er en Google restricted scope. For privat lokal MVP-testing kan du bruke test users på OAuth consent screen. Produksjonsbruk krever normalt ekstra verifisering og en sikkerhetsvurdering fra Google.
+
+## Microsoft Entra Outlook Setup
+
+Første fase av Outlook-import bruker Microsoft OAuth Authorization Code Flow og delegated Microsoft Graph permissions for den innloggede brukeren. Aboslutt ber bare om:
+
+```text
+User.Read
+Mail.Read
+offline_access
+```
+
+Ikke gi appen application-wide mailbox permissions, og ikke legg til scopes for sending, endring eller sletting av e-post.
+
+Opprett en App registration i Microsoft Entra admin center og legg inn Web redirect URI:
+
+```text
+https://www.aboslutt.no/api/import/microsoft/callback
+http://localhost:3000/api/import/microsoft/callback
+```
+
+Legg deretter inn verdiene i `.env.local` og Vercel:
+
+```bash
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_TENANT_ID=common
+MICROSOFT_REDIRECT_URI=https://www.aboslutt.no/api/import/microsoft/callback
+MICROSOFT_TOKEN_ENCRYPTION_KEY=lang-tilfeldig-secret
+```
+
+`MICROSOFT_TOKEN_ENCRYPTION_KEY` brukes til AES-GCM-kryptering av lagrede Microsoft access/refresh tokens. Hvis den mangler, faller koden tilbake til `NEXTAUTH_SECRET`, men produksjon bør ha en egen verdi. Tokens lagres server-side i `Account`-tabellen, eksponeres aldri til nettleseren, og slettes når brukeren kobler fra Microsoft.
+
+Første fase implementerer konto-tilkobling, trygg frakobling og en manuell testskann av innboksen. Abonnementsgjenkjenning, AI-analyse og automatisk recurring skanning er ikke implementert ennå.
 
 ## Google OAuth Troubleshooting
 
