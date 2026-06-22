@@ -10,7 +10,7 @@ type DashboardPageProps = {
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Oversikt | Aboslutt",
+  title: "Oversikt",
   robots: { index: false, follow: false },
 };
 

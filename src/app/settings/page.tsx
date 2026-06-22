@@ -15,7 +15,7 @@ const gmailReadonlyScope = "https://www.googleapis.com/auth/gmail.readonly";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Innstillinger | Aboslutt",
+  title: "Innstillinger",
   robots: { index: false, follow: false },
 };
 

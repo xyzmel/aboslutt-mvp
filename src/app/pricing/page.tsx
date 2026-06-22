@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     "Start gratis med manuell abonnementskontroll, eller oppgrader til Aboslutt Premium med Vipps.",
   alternates: { canonical: "/pricing" },
   openGraph: {
-    title: "Priser | Aboslutt",
+    title: "Priser",
     description: "Gratis oversikt og Premium-planer for automatisk skanning, varsler og oppsigelseshjelp.",
     url: "https://www.aboslutt.no/pricing",
   },

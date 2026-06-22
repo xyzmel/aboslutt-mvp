@@ -10,7 +10,7 @@ type RegisterPageProps = {
 };
 
 export const metadata: Metadata = {
-  title: "Opprett konto | Aboslutt",
+  title: "Opprett konto",
   description: "Opprett en Aboslutt-konto og start med å legge inn abonnementene dine manuelt.",
   alternates: { canonical: "/register" },
 };

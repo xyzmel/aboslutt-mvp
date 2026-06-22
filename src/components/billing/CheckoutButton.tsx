@@ -21,6 +21,10 @@ export function CheckoutButton({
   const [isLoading, setIsLoading] = useState(false);
 
   async function startCheckout() {
+    if (isLoading) {
+      return;
+    }
+
     setIsLoading(true);
     setMessage(null);
     trackFunnelEvent("checkout_started", { plan });
@@ -34,6 +38,7 @@ export function CheckoutButton({
       const result = (await response.json().catch(() => ({}))) as {
         error?: string;
         redirectUrl?: string;
+        statusUrl?: string;
       };
 
       if (response.ok && result.redirectUrl) {
@@ -49,8 +54,8 @@ export function CheckoutButton({
         title: "Betaling kunne ikke startes",
         message: errorMessage,
         tone: "error",
-        actionLabel: "Prøv igjen",
-        onAction: startCheckout,
+        actionLabel: result.statusUrl ? "Sjekk status" : "Prøv igjen",
+        onAction: result.statusUrl ? () => window.location.assign(result.statusUrl ?? "/payment/thanks") : startCheckout,
       });
     } catch {
       trackFunnelEvent("checkout_failed", { plan, reason: "network" });
@@ -103,6 +108,14 @@ function getCheckoutErrorMessage(error?: string) {
 
   if (error === "VIPPS_TOKEN_ERROR") {
     return "Vipps kunne ikke kontaktes akkurat nå. Prøv igjen.";
+  }
+
+  if (error === "CHECKOUT_ALREADY_PENDING") {
+    return "En Vipps-godkjenning er allerede startet. Sjekk status før du prøver igjen.";
+  }
+
+  if (error === "ALREADY_PREMIUM") {
+    return "Premium er allerede aktivert på kontoen din.";
   }
 
   return `Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`;

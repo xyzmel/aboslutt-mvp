@@ -7,7 +7,7 @@ import { getCurrentAppUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Kom i gang | Aboslutt",
+  title: "Kom i gang",
   robots: { index: false, follow: false },
 };
 

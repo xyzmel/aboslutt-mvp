@@ -28,6 +28,8 @@ const checkoutPlans = {
 
 type CheckoutPlanId = keyof typeof checkoutPlans;
 
+const pendingCheckoutWindowMs = 10 * 60 * 1000;
+
 export async function POST(request: Request) {
   const currentUser = await getCurrentUser();
 
@@ -67,6 +69,58 @@ export async function POST(request: Request) {
         error: "PAYMENTS_NOT_CONFIGURED",
       },
       { status: 503 },
+    );
+  }
+
+  const existingActiveAgreement = await prisma.billingAgreement.findFirst({
+    where: {
+      userId: currentUser.id,
+      status: "active",
+    },
+    select: { id: true },
+  });
+
+  if (existingActiveAgreement || currentUser.plan === "premium") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ALREADY_PREMIUM",
+        message: "Premium er allerede aktivert på kontoen din.",
+        statusUrl: "/payment/thanks",
+      },
+      { status: 409 },
+    );
+  }
+
+  const recentPendingAgreement = await prisma.billingAgreement.findFirst({
+    where: {
+      userId: currentUser.id,
+      status: "pending",
+      createdAt: { gt: new Date(Date.now() - pendingCheckoutWindowMs) },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      reference: true,
+      plan: true,
+      createdAt: true,
+    },
+  });
+
+  if (recentPendingAgreement) {
+    logger.info("[billing:checkout:duplicate_pending]", {
+      reference: recentPendingAgreement.reference,
+      plan: recentPendingAgreement.plan,
+      userId: currentUser.id,
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CHECKOUT_ALREADY_PENDING",
+        message: "En Vipps-godkjenning er allerede startet. Sjekk status før du starter på nytt.",
+        statusUrl: "/payment/thanks",
+      },
+      { status: 409 },
     );
   }
 

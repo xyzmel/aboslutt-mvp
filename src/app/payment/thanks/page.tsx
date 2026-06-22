@@ -3,17 +3,17 @@ import { PaymentStatusPoller } from "@/components/billing/PaymentStatusPoller";
 import { PublicPageShell } from "@/components/public/PublicPageShell";
 
 export const metadata: Metadata = {
-  title: "Betaling behandles | Aboslutt",
+  title: "Betaling behandles",
   robots: { index: false, follow: false },
 };
 
 export default function PaymentThanksPage() {
   return (
     <PublicPageShell
-      intro="Vi bekrefter betalingsstatusen hos Vipps. Premium aktiveres ikke fra denne siden, men først når Aboslutt har verifisert betalingen server-side."
+      intro="Vi sjekker betalingsstatusen server-side. Premium aktiveres bare når Aboslutt har bekreftet betalingen hos Vipps."
       title="Betalingen behandles"
     >
-      <PaymentStatusPoller />
+      <PaymentStatusPoller returnContext="thanks" />
     </PublicPageShell>
   );
 }

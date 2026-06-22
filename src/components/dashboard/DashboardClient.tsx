@@ -685,13 +685,9 @@ export function DashboardClient() {
               ) : (
                 <DashboardEmptyState
                   actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
-                  actionLabel={hasSubscriptions ? "Velg et abonnement" : "Legg til abonnement"}
-                  description={
-                    hasSubscriptions
-                      ? "Når du starter en oppsigelse, vises den her med neste steg og oppfølging."
-                      : "Legg inn et abonnement først, så kan du velge hvordan det skal sies opp."
-                  }
-                  eyebrow="Oppsigelser"
+                  actionLabel="Start en oppsigelse"
+                  description="Oppsigelser du starter, vises her med status og neste steg."
+                  eyebrow="AKTIVE OPPSIGELSER"
                   title="Ingen aktive oppsigelser"
                 />
               )}
@@ -1093,8 +1089,8 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
       <DashboardEmptyState
         actionHref="#subscriptions"
         actionLabel="Se abonnementer"
-        description="Når du markerer en oppsigelse som fullført, samles historikken her."
-        eyebrow="Oppsigelser"
+        description="Fullførte oppsigelser og dokumentasjon samles her."
+        eyebrow="HISTORIKK"
         title="Ingen fullførte oppsigelser ennå"
       />
     );
@@ -1104,9 +1100,10 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
     <section className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-extrabold tracking-tight">Fullførte oppsigelser</h2>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Historikk</p>
+          <h2 className="mt-1 text-lg font-extrabold tracking-tight">Fullførte oppsigelser</h2>
           <p className="mt-1 text-sm text-[#5F6F82]">
-            Abonnementer som er registrert som avsluttet.
+            Fullførte oppsigelser og dokumentasjon samles her.
           </p>
         </div>
         <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -1280,9 +1277,10 @@ function CancellationFollowUpSection({
     <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-extrabold tracking-tight">Oppfølging av oppsigelser</h2>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Aktive oppsigelser</p>
+          <h2 className="mt-1 text-lg font-extrabold tracking-tight">Aktive oppsigelser</h2>
           <p className="mt-1 text-sm text-[#5F6F82]">
-            Oppsigelser som venter på svar, er avvist eller krever manuell handling.
+            Status og neste steg for saker du har startet.
           </p>
         </div>
         <span className="rounded-full bg-[#F0F4F8] px-3 py-1 text-xs font-bold text-[#4A5568]">

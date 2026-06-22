@@ -11,7 +11,7 @@ import { isSmtpConfigured } from "@/lib/smtp";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Admin | Aboslutt",
+  title: "Admin",
   robots: { index: false, follow: false },
 };
 
