@@ -39,7 +39,8 @@ export async function PATCH(request: Request) {
         {
           ok: false,
           error: "PLAN_REQUIRED",
-          message: "E-postvarsler er tilgjengelig for beta-, premium- og admin-brukere.",
+          feature: "email_reminders",
+          message: "E-postvarsler krever Premium.",
         },
         { status: 403 },
       );
@@ -59,7 +60,8 @@ export async function PATCH(request: Request) {
         {
           ok: false,
           error: "PLAN_REQUIRED",
-          message: "Månedlig oppsummering er tilgjengelig for beta-, premium- og admin-brukere.",
+          feature: "monthly_summary",
+          message: "Månedlig oppsummering krever Premium.",
         },
         { status: 403 },
       );

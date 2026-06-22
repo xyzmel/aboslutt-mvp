@@ -175,7 +175,8 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
 
           <form className="mt-6 grid gap-4" onSubmit={submitAuth}>
             {isRegister ? (
-              <TextInput
+          <TextInput
+                autoComplete="name"
                 label="Navn"
                 onChange={(value) => updateField("name", value)}
                 placeholder="Navnet ditt"
@@ -183,6 +184,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               />
             ) : null}
             <TextInput
+              autoComplete="email"
               label="E-post"
               onChange={(value) => updateField("email", value)}
               placeholder="navn@eksempel.no"
@@ -190,6 +192,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               value={form.email}
             />
             <TextInput
+              autoComplete={isRegister ? "new-password" : "current-password"}
               label="Passord"
               minLength={8}
               onChange={(value) => updateField("password", value)}
@@ -199,6 +202,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
             />
             {isRegister ? (
               <TextInput
+                autoComplete="new-password"
                 label="Bekreft passord"
                 minLength={8}
                 onChange={(value) => updateField("confirmPassword", value)}
@@ -213,7 +217,9 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               type="submit"
             >
               {requestState === "loading"
-                ? "Jobber..."
+                ? isRegister
+                  ? "Oppretter konto..."
+                  : "Logger inn..."
                 : isRegister
                   ? "Opprett konto"
                   : "Fortsett med e-post"}
@@ -367,6 +373,7 @@ function GoogleIcon() {
 }
 
 function TextInput({
+  autoComplete,
   label,
   value,
   placeholder,
@@ -374,6 +381,7 @@ function TextInput({
   minLength,
   onChange,
 }: {
+  autoComplete?: string;
   label: string;
   value: string;
   placeholder: string;
@@ -386,6 +394,7 @@ function TextInput({
       {label}
       <input
         className="mt-2 h-12 w-full rounded-xl border border-[#DBE4EE] px-4 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
+        autoComplete={autoComplete}
         minLength={minLength}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

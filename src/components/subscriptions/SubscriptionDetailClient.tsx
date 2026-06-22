@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { useToast } from "@/components/ui/ToastProvider";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
 import type {
   BillingInterval,
@@ -48,10 +50,13 @@ export function SubscriptionDetailClient({
 }: {
   initialSubscription: Subscription;
 }) {
+  const { showToast } = useToast();
   const router = useRouter();
   const [subscription, setSubscription] = useState(initialSubscription);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [form, setForm] = useState<SubscriptionForm>({
     name: initialSubscription.name,
@@ -65,6 +70,13 @@ export function SubscriptionDetailClient({
 
   async function saveSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!form.name.trim() || Number(form.monthlyCost) <= 0) {
+      const message = "Skriv inn navn og et gyldig beløp før du lagrer.";
+      setErrorMessage(message);
+      showToast({ title: "Sjekk feltene", message, tone: "error" });
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
@@ -85,27 +97,45 @@ export function SubscriptionDetailClient({
       const updatedSubscription = (await response.json()) as Subscription;
       setSubscription(updatedSubscription);
       setIsEditing(false);
+      showToast({ title: "Endringer lagret", message: "Abonnementet er oppdatert.", tone: "success" });
     } catch {
-      setErrorMessage("Kunne ikke lagre endringene.");
+      const message = "Kunne ikke lagre endringene akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Lagring feilet", message, tone: "error" });
     } finally {
       setIsSaving(false);
     }
   }
 
   async function markAsCancelled() {
-    setErrorMessage(null);
-    const response = await fetch(`/api/subscriptions/${subscription.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "cancelled" }),
-    });
+    const confirmed = window.confirm("Vil du markere abonnementet som avsluttet?");
 
-    if (!response.ok) {
-      setErrorMessage("Kunne ikke markere abonnementet som avsluttet.");
+    if (!confirmed) {
       return;
     }
 
-    setSubscription((await response.json()) as Subscription);
+    setIsCancelling(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Kunne ikke markere abonnementet som avsluttet.");
+      }
+
+      setSubscription((await response.json()) as Subscription);
+      showToast({ title: "Abonnement avsluttet", message: "Statusen er oppdatert.", tone: "success" });
+    } catch {
+      const message = "Kunne ikke markere abonnementet som avsluttet akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Oppdatering feilet", message, tone: "error" });
+    } finally {
+      setIsCancelling(false);
+    }
   }
 
   async function deleteSubscription() {
@@ -115,15 +145,23 @@ export function SubscriptionDetailClient({
       return;
     }
 
+    setIsDeleting(true);
     setErrorMessage(null);
-    const response = await fetch(`/api/subscriptions/${subscription.id}`, { method: "DELETE" });
+    try {
+      const response = await fetch(`/api/subscriptions/${subscription.id}`, { method: "DELETE" });
 
-    if (!response.ok) {
-      setErrorMessage("Kunne ikke slette abonnementet.");
-      return;
+      if (!response.ok) {
+        throw new Error("Kunne ikke slette abonnementet.");
+      }
+
+      showToast({ title: "Abonnement slettet", message: "Du sendes tilbake til oversikten.", tone: "success" });
+      router.push("/dashboard");
+    } catch {
+      const message = "Kunne ikke slette abonnementet akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Sletting feilet", message, tone: "error" });
+      setIsDeleting(false);
     }
-
-    router.push("/dashboard");
   }
 
   return (
@@ -161,20 +199,26 @@ export function SubscriptionDetailClient({
               >
                 Lag oppsigelse
               </Link>
-              <button
-                className="rounded-xl border border-[#F3C3CC] px-4 py-2.5 text-sm font-bold text-[#C8102E] hover:bg-[#F5E6E9]"
+              <LoadingButton
+                className="px-4 py-2.5"
+                isLoading={isCancelling}
+                loadingLabel="Oppdaterer..."
                 onClick={markAsCancelled}
                 type="button"
+                variant="destructive"
               >
                 Marker avsluttet
-              </button>
-              <button
-                className="rounded-xl bg-[#C8102E] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#a90d27]"
+              </LoadingButton>
+              <LoadingButton
+                className="px-4 py-2.5"
+                isLoading={isDeleting}
+                loadingLabel="Sletter..."
                 onClick={deleteSubscription}
                 type="button"
+                variant="destructive"
               >
                 Slett
-              </button>
+              </LoadingButton>
             </div>
           </div>
 
@@ -230,13 +274,14 @@ export function SubscriptionDetailClient({
                   value={form.note}
                 />
               </label>
-              <button
-                className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] disabled:opacity-50 sm:col-span-2"
-                disabled={isSaving}
+              <LoadingButton
+                className="sm:col-span-2"
+                isLoading={isSaving}
+                loadingLabel="Lagrer..."
                 type="submit"
               >
-                {isSaving ? "Lagrer..." : "Lagre endringer"}
-              </button>
+                Lagre endringer
+              </LoadingButton>
             </form>
           ) : (
             <dl className="mt-6 grid gap-4 sm:grid-cols-2">

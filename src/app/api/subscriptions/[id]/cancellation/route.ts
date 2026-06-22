@@ -256,6 +256,7 @@ async function sendCancellationEmail({
       {
         ok: false,
         error: "PLAN_REQUIRED",
+        feature: "cancellation_email_send",
         message: "Gratis-brukere kan kopiere utkastet, men sending via Aboslutt krever Premium.",
       },
       { status: 403 },

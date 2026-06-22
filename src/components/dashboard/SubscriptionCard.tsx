@@ -6,6 +6,7 @@ import type { Subscription } from "@/types/subscription";
 type SubscriptionCardProps = {
   subscription: Subscription;
   isSelected: boolean;
+  isDeleting?: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (subscription: Subscription) => void;
@@ -34,6 +35,7 @@ const billingIntervalLabels: Record<Subscription["billingInterval"], string> = {
 export function SubscriptionCard({
   subscription,
   isSelected,
+  isDeleting = false,
   onToggle,
   onDelete,
   onEdit,
@@ -121,11 +123,12 @@ export function SubscriptionCard({
           Si opp
         </Link>
         <button
-          className="rounded-xl border border-[#F3C3CC] px-3 py-2.5 text-sm font-bold text-[#C8102E] transition hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+          className="rounded-xl border border-[#F3C3CC] px-3 py-2.5 text-sm font-bold text-[#C8102E] transition hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
           onClick={() => onDelete(subscription.id)}
+          disabled={isDeleting}
           type="button"
         >
-          Slett
+          {isDeleting ? "Sletter..." : "Slett"}
         </button>
       </div>
     </article>

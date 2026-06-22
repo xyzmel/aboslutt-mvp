@@ -7,6 +7,7 @@ import { isAdminUser } from "@/lib/admin";
 import { isVippsConfigured } from "@/lib/auth-config-status";
 import { isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
 import { getCurrentAppUser } from "@/lib/current-user";
+import { logger } from "@/lib/logger";
 import { canUseEmailReminders, canUseMonthlySummary } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 
@@ -202,5 +203,5 @@ function SettingsLoadError() {
 
 function logServerError(route: string, error: unknown, userId?: string) {
   const safeError = error instanceof Error ? { name: error.name, message: error.message } : { message: "Ukjent feil" };
-  console.error("[server-render]", { route, userId, ...safeError });
+  logger.error("[server-render]", { route, userId, ...safeError });
 }

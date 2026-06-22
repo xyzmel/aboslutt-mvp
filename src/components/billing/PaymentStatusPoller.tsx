@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import { siteConfig } from "@/lib/site-config";
 
@@ -11,6 +12,7 @@ const maxAttempts = 20;
 const pollIntervalMs = 3000;
 
 export function PaymentStatusPoller() {
+  const { showToast } = useToast();
   const [status, setStatus] = useState<BillingStatus>("idle");
   const trackedFinalStatus = useRef<BillingStatus | null>(null);
 
@@ -76,13 +78,23 @@ export function PaymentStatusPoller() {
     if (status === "active") {
       trackedFinalStatus.current = status;
       trackFunnelEvent("premium_activated", { source: "payment_status_poll" });
+      showToast({
+        title: "Premium er aktivert",
+        message: "Betalingen er bekreftet.",
+        tone: "success",
+      });
     }
 
     if (status === "cancelled" || status === "expired" || status === "failed" || status === "none" || status === "timeout") {
       trackedFinalStatus.current = status;
       trackFunnelEvent("checkout_failed", { status });
+      showToast({
+        title: "Betaling ikke fullført",
+        message: getStatusContent(status).title,
+        tone: "error",
+      });
     }
-  }, [status]);
+  }, [showToast, status]);
 
   return (
     <section className="rounded-2xl bg-[#F7F9FC] p-5 ring-1 ring-[#DBE4EE]" aria-live="polite">

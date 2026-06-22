@@ -5,20 +5,16 @@ import Link from "next/link";
 
 type OnboardingChecklistProps = {
   hasSubscriptions: boolean;
-  hasAnyNextPayment: boolean;
-  emailRemindersEnabled: boolean;
-  hasGoogleGmailConnected: boolean;
-  monthlyTotal: number;
+  hasStartedCancellation: boolean;
+  hasCompletedCancellation: boolean;
 };
 
 const storageKey = "aboslutt:onboarding-checklist-collapsed";
 
 export function OnboardingChecklist({
   hasSubscriptions,
-  hasAnyNextPayment,
-  emailRemindersEnabled,
-  hasGoogleGmailConnected,
-  monthlyTotal,
+  hasStartedCancellation,
+  hasCompletedCancellation,
 }: OnboardingChecklistProps) {
   const [isCollapsed, setIsCollapsed] = useState(() =>
     typeof window !== "undefined" && window.localStorage.getItem(storageKey) === "true",
@@ -27,35 +23,34 @@ export function OnboardingChecklist({
   const items = useMemo(
     () => [
       {
+        label: "Opprett konto",
+        completed: true,
+        href: "/dashboard",
+      },
+      {
         label: "Legg til første abonnement",
         completed: hasSubscriptions,
         href: "#manual-add",
       },
       {
-        label: "Legg inn neste trekk",
-        completed: hasAnyNextPayment,
-        href: "#manual-add",
+        label: "Start første oppsigelse",
+        completed: hasStartedCancellation,
+        href: hasSubscriptions ? "#subscriptions" : "#manual-add",
       },
       {
-        label: "Aktiver varsler",
-        completed: emailRemindersEnabled,
-        href: "/settings",
-      },
-      {
-        label: "Koble til Gmail",
-        completed: hasGoogleGmailConnected,
-        href: "/import/email",
-      },
-      {
-        label: "Se månedlig total",
-        completed: monthlyTotal > 0,
-        href: "/dashboard",
+        label: "Fullfør første oppsigelse",
+        completed: hasCompletedCancellation,
+        href: hasStartedCancellation ? "#cancellations" : "#subscriptions",
       },
     ],
-    [emailRemindersEnabled, hasAnyNextPayment, hasGoogleGmailConnected, hasSubscriptions, monthlyTotal],
+    [hasCompletedCancellation, hasStartedCancellation, hasSubscriptions],
   );
   const completedCount = items.filter((item) => item.completed).length;
   const progressLabel = `${completedCount}/${items.length}`;
+
+  if (completedCount === items.length) {
+    return null;
+  }
 
   if (isCollapsed) {
     return (
@@ -85,7 +80,7 @@ export function OnboardingChecklist({
           <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Kom i gang</p>
           <h2 className="mt-1 text-xl font-extrabold tracking-tight">Oppstartsliste</h2>
           <p className="mt-1 text-sm leading-6 text-[#5F6F82]">
-            {progressLabel} fullført. Start manuelt, og slå på automatisering når det passer.
+            {progressLabel} fullført. Følg stegene fra første abonnement til ferdig oppsigelse.
           </p>
         </div>
         <button
@@ -121,7 +116,7 @@ export function OnboardingChecklist({
                 item.completed ? "bg-emerald-50 text-emerald-700" : "bg-white text-[#5F6F82]"
               }`}
             >
-              {item.completed ? "Ferdig" : "Gjenstår"}
+              {item.completed ? "Ferdig" : "Neste"}
             </span>
           </Link>
         ))}

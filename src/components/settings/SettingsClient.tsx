@@ -4,7 +4,11 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
+import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
+import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
 import { PlanStatusCard } from "@/components/plans/PlanStatusCard";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { useToast } from "@/components/ui/ToastProvider";
 
 const vippsLoginButtonAsset = "/vipps-login-pill-default.svg";
 
@@ -56,10 +60,12 @@ export function SettingsClient({
   monthlySummaryAvailable,
   paymentsConfigured,
 }: SettingsClientProps) {
+  const { showToast } = useToast();
   const [message, setMessage] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [billingStatus, setBillingStatus] = useState(billingAgreement?.status ?? null);
   const [isCancellingBilling, setIsCancellingBilling] = useState(false);
+  const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
   const [notificationForm, setNotificationForm] = useState({
     emailRemindersEnabled,
     reminderDaysBefore,
@@ -80,8 +86,15 @@ export function SettingsClient({
         throw new Error("Kunne ikke slette abonnementene.");
       }
       setMessage("Alle abonnementer er slettet.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke slette abonnementene.");
+      showToast({
+        title: "Abonnementer slettet",
+        message: "Alle abonnementene dine er fjernet.",
+        tone: "success",
+      });
+    } catch {
+      const userMessage = "Kunne ikke slette abonnementene akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Sletting feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -104,9 +117,16 @@ export function SettingsClient({
       if (!response.ok) {
         throw new Error("Kunne ikke slette kontodata.");
       }
+      showToast({
+        title: "Kontodata slettes",
+        message: "Du logges ut når slettingen er fullført.",
+        tone: "success",
+      });
       await signOut({ callbackUrl: "/login" });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke slette kontodata.");
+    } catch {
+      const userMessage = "Kunne ikke slette kontodata akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Sletting feilet", message: userMessage, tone: "error" });
       setIsWorking(false);
     }
   }
@@ -138,8 +158,11 @@ export function SettingsClient({
         setNotificationForm(result.preferences);
       }
       setMessage("Varselinnstillinger er lagret.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke lagre varselinnstillinger.");
+      showToast({ title: "Varsler lagret", message: "Innstillingene er oppdatert.", tone: "success" });
+    } catch {
+      const userMessage = "Kunne ikke lagre varselinnstillinger akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Lagring feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -172,13 +195,20 @@ export function SettingsClient({
       };
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.message ?? "Kunne ikke stoppe betalingsavtalen akkurat nå.");
+        throw new Error("Kunne ikke stoppe betalingsavtalen akkurat nå.");
       }
 
       setBillingStatus(result.status ?? "cancellation_pending");
       setMessage("Vipps-avtalen er sendt til avslutning.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke stoppe betalingsavtalen akkurat nå.");
+      showToast({
+        title: "Avtale sendt til avslutning",
+        message: "Vi oppdaterer status når Vipps bekrefter endringen.",
+        tone: "success",
+      });
+    } catch {
+      const userMessage = "Kunne ikke stoppe betalingsavtalen akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Avslutning feilet", message: userMessage, tone: "error" });
     } finally {
       setIsCancellingBilling(false);
     }
@@ -196,13 +226,23 @@ export function SettingsClient({
       ) : null}
 
       <div className="mt-6 grid gap-5">
-        <PlanStatusCard plan={plan} />
+        <PlanStatusCard
+          onUpgradeClick={() =>
+            setPremiumDialogReason(
+              "Premium gir automatisk skanning, varsler, månedlig oppsummering og oppsigelseshjelp.",
+            )
+          }
+          plan={plan}
+        />
 
         <BillingSection
           agreement={billingAgreement ? { ...billingAgreement, status: billingStatus ?? billingAgreement.status } : null}
           isAdmin={isAdmin}
           isCancelling={isCancellingBilling}
           onCancel={cancelBillingAgreement}
+          onUpgrade={() =>
+            setPremiumDialogReason("Se hva Premium inkluderer før du eventuelt fortsetter med Vipps.")
+          }
           paymentsConfigured={paymentsConfigured}
           plan={plan}
         />
@@ -297,10 +337,24 @@ export function SettingsClient({
           <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
             Få e-post før kommende abonnementstrekk og en valgfri månedlig oversikt.
           </p>
+          {!notificationForm.emailRemindersEnabled && !notificationForm.monthlySummaryEnabled ? (
+            <div className="mt-4 rounded-xl border border-dashed border-[#C8D4E2] bg-[#F7F9FC] p-4 text-sm">
+              <p className="font-extrabold text-[#0D1B2A]">Ingen varsler er slått på ennå</p>
+              <p className="mt-1 leading-6 text-[#5F6F82]">
+                Varsler hjelper deg å følge med på kommende trekk og månedlig utvikling.
+                Slå på det som passer under.
+              </p>
+            </div>
+          ) : null}
           {!emailRemindersAvailable || !monthlySummaryAvailable ? (
-            <p className="mt-3 rounded-xl bg-[#FFF6E8] px-4 py-3 text-sm font-semibold text-[#8A4B13]">
-              Varsler er tilgjengelig med Premium. Du kan fortsatt legge inn abonnementer manuelt gratis.
-            </p>
+            <div className="mt-4">
+              <PremiumFeatureGate
+                benefit="Premium gir e-postvarsler før kommende trekk og en månedlig oppsummering av abonnementene dine."
+                blockedAction="Varselvalgene kan ikke slås på i gratisplanen."
+                description="Du kan fortsatt legge inn abonnementer manuelt gratis. Varsler er for deg som vil få mer oppfølging automatisk."
+                title="Varsler krever Premium"
+              />
+            </div>
           ) : null}
           <div className="mt-5 grid gap-4">
             <label className="flex items-start justify-between gap-4 rounded-xl bg-[#F7F9FC] p-4 text-sm">
@@ -368,25 +422,32 @@ export function SettingsClient({
             lagres i databasen.
           </p>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <button
-              className="rounded-xl border border-[#F3C3CC] px-5 py-3 text-sm font-bold text-[#C8102E] hover:bg-[#F5E6E9] disabled:opacity-50"
-              disabled={isWorking}
+            <LoadingButton
+              isLoading={isWorking}
+              loadingLabel="Sletter..."
               onClick={deleteAllSubscriptions}
               type="button"
+              variant="destructive"
             >
               Slett alle abonnementer
-            </button>
-            <button
-              className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] disabled:opacity-50"
-              disabled={isWorking}
+            </LoadingButton>
+            <LoadingButton
+              isLoading={isWorking}
+              loadingLabel="Sletter..."
               onClick={deleteAccountData}
               type="button"
+              variant="destructive"
             >
               Slett kontodata
-            </button>
+            </LoadingButton>
           </div>
         </section>
       </div>
+      <PremiumUpgradeDialog
+        onClose={() => setPremiumDialogReason(null)}
+        open={Boolean(premiumDialogReason)}
+        reason={premiumDialogReason ?? undefined}
+      />
     </section>
   );
 }
@@ -426,6 +487,7 @@ function BillingSection({
   isAdmin,
   isCancelling,
   onCancel,
+  onUpgrade,
   paymentsConfigured,
   plan,
 }: {
@@ -433,6 +495,7 @@ function BillingSection({
   isAdmin: boolean;
   isCancelling: boolean;
   onCancel: () => void;
+  onUpgrade: () => void;
   paymentsConfigured: boolean;
   plan: string;
 }) {
@@ -482,14 +545,15 @@ function BillingSection({
       {isPaidPlan ? (
         <div className="mt-5">
           {canCancel ? (
-            <button
-              className="rounded-xl border border-[#F3C3CC] px-5 py-3 text-sm font-bold text-[#C8102E] hover:bg-[#F5E6E9] disabled:opacity-50"
-              disabled={isCancelling}
+            <LoadingButton
+              isLoading={isCancelling}
+              loadingLabel="Stopper avtale..."
               onClick={onCancel}
               type="button"
+              variant="destructive"
             >
-              {isCancelling ? "Stopper avtale..." : "Stopp fast trekk"}
-            </button>
+              Stopp fast trekk
+            </LoadingButton>
           ) : (
             <p className="text-sm font-semibold text-[#5F6F82]">
               {agreement ? "Denne betalingsavtalen kan ikke stoppes fra denne statusen." : "Ingen aktiv Vipps-avtale er funnet."}
@@ -502,12 +566,13 @@ function BillingSection({
           <p className="mt-1 text-sm leading-6 text-[#5F6F82]">
             Du bruker gratisplanen. Når du starter Premium, vises betalingsstatusen her.
           </p>
-          <a
+          <button
             className="mt-3 inline-flex rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
-            href="/pricing"
+            onClick={onUpgrade}
+            type="button"
           >
             Se Premium
-          </a>
+          </button>
         </div>
       ) : (
         <p className="mt-5 text-sm font-semibold text-[#5F6F82]">

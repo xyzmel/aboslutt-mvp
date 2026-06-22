@@ -109,7 +109,9 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: "PLAN_LIMIT_REACHED",
-        message: `Gratis-planen har plass til ${limit} abonnementer. Slett et abonnement eller oppgrader til Premium for å legge til flere.`,
+        currentUsage: existingSubscriptionCount,
+        limit,
+        message: `Du har brukt ${existingSubscriptionCount} av ${limit} abonnementer i gratisplanen. Slett et abonnement eller oppgrader til Premium for å legge til flere.`,
       },
       { status: 403 },
     );

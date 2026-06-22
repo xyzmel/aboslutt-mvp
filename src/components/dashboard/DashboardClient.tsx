@@ -1,7 +1,9 @@
 "use client";
 
-import { Dispatch, FormEvent, MouseEvent, SetStateAction, useEffect, useMemo, useState } from "react";
+import { Dispatch, FormEvent, MouseEvent, ReactNode, SetStateAction, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
+import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
 import { ConfirmCancellation } from "@/components/cancellation/ConfirmCancellation";
 import { SuccessScreen } from "@/components/cancellation/SuccessScreen";
 import { SubscriptionCard } from "@/components/dashboard/SubscriptionCard";
@@ -9,6 +11,9 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
 import { PlanStatusCard } from "@/components/plans/PlanStatusCard";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { SkeletonBlock } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import { getCancellationStatusLabel } from "@/lib/cancellation";
 import {
@@ -39,6 +44,16 @@ type SubscriptionForm = {
   billingInterval: BillingInterval;
   nextPayment: string;
   note: string;
+};
+
+type SubscriptionFormErrors = Partial<Record<keyof SubscriptionForm, string>>;
+type PremiumGateState = {
+  title: string;
+  description: string;
+  benefit: string;
+  blockedAction?: string;
+  currentUsage?: number | null;
+  limit?: number | null;
 };
 
 const filters: { value: CategoryFilter; label: string }[] = [
@@ -80,6 +95,7 @@ const billingIntervalOptions: [BillingInterval, string][] = [
 ];
 
 export function DashboardClient() {
+  const { showToast } = useToast();
   const [subscriptionList, setSubscriptionList] = useState<Subscription[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>("all");
@@ -87,7 +103,9 @@ export function DashboardClient() {
   const [lastCancelledCount, setLastCancelledCount] = useState(0);
   const [lastMonthlySavings, setLastMonthlySavings] = useState(0);
   const [form, setForm] = useState<SubscriptionForm>(defaultForm);
+  const [formErrors, setFormErrors] = useState<SubscriptionFormErrors>({});
   const [editForm, setEditForm] = useState<SubscriptionForm>(defaultForm);
+  const [editFormErrors, setEditFormErrors] = useState<SubscriptionFormErrors>({});
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -96,7 +114,9 @@ export function DashboardClient() {
   const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
   const [hasGoogleGmailConnected, setHasGoogleGmailConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [premiumGate, setPremiumGate] = useState<PremiumGateState | null>(null);
+  const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
   useEffect(() => {
     async function loadSubscriptions() {
@@ -162,17 +182,16 @@ export function DashboardClient() {
     0,
   );
   const upcomingPayments = useMemo(() => getUpcomingPayments(subscriptionList), [subscriptionList]);
-  const cancellationFollowUps = useMemo(() => getCancellationFollowUps(subscriptionList), [subscriptionList]);
+  const activeCancellations = useMemo(() => getActiveCancellations(subscriptionList), [subscriptionList]);
+  const completedCancellations = useMemo(() => getCompletedCancellations(subscriptionList), [subscriptionList]);
   const hasSubscriptions = subscriptionList.length > 0;
+  const hasStartedCancellation = activeCancellations.length > 0 || completedCancellations.length > 0;
+  const hasCompletedCancellation = completedCancellations.length > 0;
   const hasAnyNextPayment = subscriptionList.some((subscription) =>
     Boolean(parseNextPaymentDate(subscription.nextPayment)),
   );
-  const showOnboardingChecklist =
-    !hasSubscriptions ||
-    !hasAnyNextPayment ||
-    !emailRemindersEnabled ||
-    !hasGoogleGmailConnected ||
-    totalMonthlyCost <= 0;
+  const isFirstTimeUser = !isLoading && !hasSubscriptions && !hasStartedCancellation;
+  const showOnboardingChecklist = !hasSubscriptions || !hasStartedCancellation || !hasCompletedCancellation;
   const shouldShowUpgradePrompt = currentPlan === "free";
 
   function explainPremiumFeature(event: MouseEvent<HTMLAnchorElement>) {
@@ -181,9 +200,21 @@ export function DashboardClient() {
     }
 
     event.preventDefault();
-    setUpgradeMessage(
-      "Automatisk e-postimport er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.",
-    );
+    const message =
+      "Automatisk e-postimport er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.";
+    setPremiumGate({
+      title: "Automatisk import krever Premium",
+      description: "Du kan legge inn abonnementer manuelt gratis. E-postimport er for deg som vil finne flere faste kostnader automatisk.",
+      benefit: "Premium skanner Gmail og e-postkvitteringer, foreslår mulige abonnementer og lar deg bekrefte før noe lagres.",
+      blockedAction: "Importen starter ikke før du velger å oppgradere.",
+    });
+    showToast({
+      title: "Premium kreves",
+      message,
+      tone: "info",
+      actionLabel: "Se Premium",
+      onAction: () => setPremiumDialogReason(message),
+    });
   }
 
   function toggleSubscription(id: string) {
@@ -209,6 +240,18 @@ export function DashboardClient() {
 
   async function addSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const validationErrors = validateSubscriptionForm(form);
+    setFormErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      showToast({
+        title: "Sjekk feltene",
+        message: "Rett opp markerte felt før abonnementet lagres.",
+        tone: "error",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
@@ -221,12 +264,48 @@ export function DashboardClient() {
           monthlyCost: Number(form.monthlyCost),
         }),
       });
+      const result = (await response.json().catch(() => ({}))) as Subscription & {
+        error?: string;
+        currentUsage?: number;
+        limit?: number | null;
+      };
 
       if (!response.ok) {
+        if (result.error === "PLAN_LIMIT_REACHED") {
+          const currentUsage = result.currentUsage ?? subscriptionList.length;
+          const limit = typeof result.limit === "number" ? result.limit : 10;
+          const message = `Du har brukt ${currentUsage} av ${limit} abonnementer i gratisplanen.`;
+          setErrorMessage(message);
+          setPremiumGate({
+            title: "Gratisgrensen er nådd",
+            description: message,
+            benefit: "Premium gir ubegrensede abonnementer, automatisk skanning, varsler og oppsigelseshjelp.",
+            blockedAction: "Nye abonnementer lagres ikke før du sletter et abonnement eller oppgraderer.",
+            currentUsage,
+            limit,
+          });
+          showToast({
+            title: "Gratisgrensen er nådd",
+            message,
+            tone: "info",
+            actionLabel: "Se Premium",
+            onAction: () =>
+              setPremiumGate({
+                title: "Gratisgrensen er nådd",
+                description: message,
+                benefit: "Premium gir ubegrensede abonnementer, automatisk skanning, varsler og oppsigelseshjelp.",
+                blockedAction: "Nye abonnementer lagres ikke før du sletter et abonnement eller oppgraderer.",
+                currentUsage,
+                limit,
+              }),
+          });
+          return;
+        }
+
         throw new Error("Kunne ikke legge til abonnementet.");
       }
 
-      const subscription = (await response.json()) as Subscription;
+      const subscription = result as Subscription;
       const isFirstSubscription = subscriptionList.length === 0;
       setSubscriptionList((currentSubscriptions) => [...currentSubscriptions, subscription]);
       if (isFirstSubscription) {
@@ -236,15 +315,39 @@ export function DashboardClient() {
         });
       }
       setForm(defaultForm);
+      setFormErrors({});
+      showToast({
+        title: "Abonnement lagt til",
+        message: `${subscription.name} er lagt til i oversikten.`,
+        tone: "success",
+      });
     } catch {
-      setErrorMessage("Kunne ikke legge til abonnementet.");
+      const message = "Kunne ikke legge til abonnementet akkurat nå.";
+      setErrorMessage(message);
+      showToast({
+        title: "Lagring feilet",
+        message,
+        tone: "error",
+        actionLabel: "Prøv igjen",
+        onAction: () => document.getElementById("manual-add")?.scrollIntoView({ behavior: "smooth" }),
+      });
     } finally {
       setIsSaving(false);
     }
   }
 
   async function deleteSubscription(id: string) {
+    const subscription = subscriptionList.find((item) => item.id === id);
+    const confirmed = window.confirm(
+      `Vil du slette ${subscription?.name ?? "dette abonnementet"}? Dette kan ikke angres.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setErrorMessage(null);
+    setDeletingIds((currentIds) => [...currentIds, id]);
 
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
@@ -259,13 +362,27 @@ export function DashboardClient() {
         currentSubscriptions.filter((subscription) => subscription.id !== id),
       );
       setSelectedIds((currentIds) => currentIds.filter((selectedId) => selectedId !== id));
+      showToast({
+        title: "Abonnement slettet",
+        message: subscription ? `${subscription.name} er fjernet.` : "Abonnementet er fjernet.",
+        tone: "success",
+      });
     } catch {
-      setErrorMessage("Kunne ikke slette abonnementet.");
+      const message = "Kunne ikke slette abonnementet akkurat nå.";
+      setErrorMessage(message);
+      showToast({
+        title: "Sletting feilet",
+        message,
+        tone: "error",
+      });
+    } finally {
+      setDeletingIds((currentIds) => currentIds.filter((selectedId) => selectedId !== id));
     }
   }
 
   function startEditingSubscription(subscription: Subscription) {
     setEditingSubscription(subscription);
+    setEditFormErrors({});
     setEditForm({
       name: subscription.name,
       category: subscription.category,
@@ -281,6 +398,18 @@ export function DashboardClient() {
     event.preventDefault();
 
     if (!editingSubscription) {
+      return;
+    }
+
+    const validationErrors = validateSubscriptionForm(editForm);
+    setEditFormErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      showToast({
+        title: "Sjekk feltene",
+        message: "Rett opp markerte felt før endringene lagres.",
+        tone: "error",
+      });
       return;
     }
 
@@ -309,8 +438,20 @@ export function DashboardClient() {
       );
       setEditingSubscription(null);
       setEditForm(defaultForm);
+      setEditFormErrors({});
+      showToast({
+        title: "Endringer lagret",
+        message: `${updatedSubscription.name} er oppdatert.`,
+        tone: "success",
+      });
     } catch {
-      setErrorMessage("Kunne ikke oppdatere abonnementet.");
+      const message = "Kunne ikke lagre endringene akkurat nå.";
+      setErrorMessage(message);
+      showToast({
+        title: "Lagring feilet",
+        message,
+        tone: "error",
+      });
     } finally {
       setIsUpdating(false);
     }
@@ -347,8 +488,19 @@ export function DashboardClient() {
       );
       setSelectedIds([]);
       setStep("success");
+      showToast({
+        title: "Oppsigelse registrert",
+        message: `${subscriptionsToCancel.length} abonnement er markert som avsluttet.`,
+        tone: "success",
+      });
     } catch {
-      setErrorMessage("Kunne ikke lagre avslutningen. Prøv igjen.");
+      const message = "Kunne ikke lagre avslutningen. Prøv igjen.";
+      setErrorMessage(message);
+      showToast({
+        title: "Kunne ikke lagre",
+        message,
+        tone: "error",
+      });
       setStep("overview");
     }
   }
@@ -376,16 +528,26 @@ export function DashboardClient() {
       });
 
       if (!response.ok) {
-        const result = (await response.json().catch(() => ({}))) as { message?: string };
-        throw new Error(result.message ?? "Kunne ikke oppdatere oppsigelsen.");
+        throw new Error("Kunne ikke oppdatere oppsigelsen.");
       }
 
       const subscriptionsResponse = await fetch("/api/subscriptions", { cache: "no-store" });
       if (subscriptionsResponse.ok) {
         setSubscriptionList((await subscriptionsResponse.json()) as Subscription[]);
       }
+      showToast({
+        title: "Oppsigelse oppdatert",
+        message: "Statusen er lagret.",
+        tone: "success",
+      });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Kunne ikke oppdatere oppsigelsen.");
+      const message = error instanceof Error ? error.message : "Kunne ikke oppdatere oppsigelsen.";
+      setErrorMessage(message);
+      showToast({
+        title: "Oppdatering feilet",
+        message,
+        tone: "error",
+      });
     }
   }
 
@@ -395,29 +557,25 @@ export function DashboardClient() {
 
       <section className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7">
         {errorMessage ? (
-          <div className="mb-5 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-4 text-sm font-semibold text-[#C8102E]">
-            {errorMessage}
+          <div className="mb-5 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-4 text-sm text-[#C8102E]">
+            <p className="font-semibold">{errorMessage}</p>
+            <button
+              className="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-bold text-[#0D1B2A] ring-1 ring-[#F3C3CC] hover:ring-[#C8102E]/50"
+              onClick={() => window.location.reload()}
+              type="button"
+            >
+              Prøv igjen
+            </button>
           </div>
         ) : null}
-        {upgradeMessage ? (
-          <div className="mb-5 rounded-2xl border border-[#DBE4EE] bg-white p-4 text-sm text-[#0D1B2A] shadow-sm">
-            <p className="font-bold">Premium gir automatisk import</p>
-            <p className="mt-1 text-[#5F6F82]">{upgradeMessage}</p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <Link
-                className="rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-[#a90d27]"
-                href="/pricing"
-              >
-                Se Premium
-              </Link>
-              <button
-                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                onClick={() => setUpgradeMessage(null)}
-                type="button"
-              >
-                Fortsett gratis
-              </button>
-            </div>
+        {premiumGate ? (
+          <div className="mb-5">
+            <PremiumFeatureGate
+              {...premiumGate}
+              onClose={() => {
+                setPremiumGate(null);
+              }}
+            />
           </div>
         ) : null}
 
@@ -476,6 +634,17 @@ export function DashboardClient() {
               </div>
             </div>
 
+            {isFirstTimeUser ? (
+              <div className="mt-5">
+                <FirstTimeOnboarding
+                  hasGoogleGmailConnected={hasGoogleGmailConnected}
+                  onImportClick={explainPremiumFeature}
+                />
+              </div>
+            ) : null}
+
+            {!isFirstTimeUser ? (
+              <>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryCard
                 accent="red"
@@ -507,12 +676,28 @@ export function DashboardClient() {
               <UpcomingPayments subscriptions={upcomingPayments} />
             </div>
 
-            {cancellationFollowUps.length > 0 ? (
-              <CancellationFollowUpSection
-                onAction={updateCancellationRequest}
-                subscriptions={cancellationFollowUps}
-              />
-            ) : null}
+            <div id="cancellations">
+              {activeCancellations.length > 0 ? (
+                <CancellationFollowUpSection
+                  onAction={updateCancellationRequest}
+                  subscriptions={activeCancellations}
+                />
+              ) : (
+                <DashboardEmptyState
+                  actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
+                  actionLabel={hasSubscriptions ? "Velg et abonnement" : "Legg til abonnement"}
+                  description={
+                    hasSubscriptions
+                      ? "Når du starter en oppsigelse, vises den her med neste steg og oppfølging."
+                      : "Legg inn et abonnement først, så kan du velge hvordan det skal sies opp."
+                  }
+                  eyebrow="Oppsigelser"
+                  title="Ingen aktive oppsigelser"
+                />
+              )}
+
+              <CompletedCancellationsSection subscriptions={completedCancellations} />
+            </div>
 
             <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
               {filters.map((filter) => (
@@ -532,13 +717,16 @@ export function DashboardClient() {
             </div>
 
             {isLoading ? (
-              <div className="mt-4 rounded-2xl bg-white p-6 text-center text-sm text-[#5F6F82] ring-1 ring-[#DBE4EE]">
-                Henter abonnementer...
+              <div className="mt-4 grid gap-4 lg:grid-cols-2" aria-label="Henter abonnementer">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <SkeletonBlock className="h-56" key={index} />
+                ))}
               </div>
             ) : (
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="mt-4 grid gap-4 lg:grid-cols-2" id="subscriptions">
                 {visibleSubscriptions.map((subscription) => (
                   <SubscriptionCard
+                    isDeleting={deletingIds.includes(subscription.id)}
                     isSelected={selectedIds.includes(subscription.id)}
                     key={subscription.id}
                     onDelete={deleteSubscription}
@@ -551,42 +739,19 @@ export function DashboardClient() {
             )}
 
             {!isLoading && visibleSubscriptions.length === 0 ? (
-              <div className="mt-6 rounded-2xl bg-white p-6 text-center text-sm text-[#5F6F82] ring-1 ring-[#DBE4EE]">
-                <h2 className="text-xl font-extrabold tracking-tight text-[#0D1B2A]">
-                  Ingen abonnementer ennå
-                </h2>
-                <p className="mx-auto mt-2 max-w-xl">
-                  Start med å legge inn abonnementene du allerede kjenner. Gmail-skanning
-                  er valgfritt når du vil finne flere automatisk.
-                </p>
-                <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-                  <a
-                    className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
-                    href="#manual-add"
-                  >
-                    Legg til manuelt
-                  </a>
-                  <Link
-                    className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                    href="/import/email"
-                    onClick={explainPremiumFeature}
-                  >
-                    Skann Gmail
-                  </Link>
-                  <Link
-                    className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                    href="/onboarding"
-                  >
-                    Se hvordan det fungerer
-                  </Link>
-                </div>
-              </div>
+              <SubscriptionsEmptyState onImportClick={explainPremiumFeature} />
             ) : null}
 
             {!isLoading && cancellableSubscriptions.length === 0 && subscriptionList.length > 0 ? (
-              <div className="mt-6 rounded-2xl bg-white p-6 text-center text-sm text-[#5F6F82] ring-1 ring-[#DBE4EE]">
-                Alle abonnementer er markert som avsluttet.
-              </div>
+              <DashboardEmptyState
+                actionHref="#manual-add"
+                actionLabel="Legg til nytt abonnement"
+                description="Du har ingen aktive abonnementer akkurat nå. Legg inn et nytt når du starter eller oppdager en fast kostnad."
+                eyebrow="Oversikt"
+                title="Alle abonnementer er avsluttet"
+              />
+            ) : null}
+              </>
             ) : null}
 
             <form
@@ -600,15 +765,24 @@ export function DashboardClient() {
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-6">
                 <TextInput
+                  autoComplete="organization"
+                  error={formErrors.name}
                   label="Navn"
-                  onChange={(value) => setForm((current) => ({ ...current, name: value }))}
+                  onChange={(value) => {
+                    setForm((current) => ({ ...current, name: value }));
+                    setFormErrors((current) => ({ ...current, name: undefined }));
+                  }}
                   placeholder="F.eks. HBO Max"
                   value={form.name}
                 />
                 <TextInput
+                  error={formErrors.monthlyCost}
                   inputMode="numeric"
                   label="Kr/mnd"
-                  onChange={(value) => setForm((current) => ({ ...current, monthlyCost: value }))}
+                  onChange={(value) => {
+                    setForm((current) => ({ ...current, monthlyCost: value }));
+                    setFormErrors((current) => ({ ...current, monthlyCost: undefined }));
+                  }}
                   placeholder="149"
                   value={form.monthlyCost}
                 />
@@ -658,13 +832,14 @@ export function DashboardClient() {
                   value={form.note}
                 />
               </div>
-              <button
-                className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#15283c] disabled:opacity-50"
-                disabled={isSaving}
+              <LoadingButton
+                className="mt-4 bg-[#0D1B2A] hover:bg-[#15283c]"
+                isLoading={isSaving}
+                loadingLabel="Lagrer..."
                 type="submit"
               >
-                {isSaving ? "Lagrer..." : "Legg til"}
-              </button>
+                Legg til
+              </LoadingButton>
             </form>
 
             <div className="mt-6">
@@ -675,29 +850,48 @@ export function DashboardClient() {
               />
             </div>
 
+            <div className="mt-6">
+              <NotificationsEmptyState
+                emailRemindersEnabled={emailRemindersEnabled}
+                hasAnyNextPayment={hasAnyNextPayment}
+                hasSubscriptions={hasSubscriptions}
+              />
+            </div>
+
             <div className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
               {showOnboardingChecklist ? (
                 <OnboardingChecklist
-                  emailRemindersEnabled={emailRemindersEnabled}
-                  hasAnyNextPayment={hasAnyNextPayment}
-                  hasGoogleGmailConnected={hasGoogleGmailConnected}
+                  hasCompletedCancellation={hasCompletedCancellation}
+                  hasStartedCancellation={hasStartedCancellation}
                   hasSubscriptions={hasSubscriptions}
-                  monthlyTotal={totalMonthlyCost}
                 />
               ) : (
                 <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
                   <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Kom i gang</p>
                   <h2 className="mt-1 text-xl font-extrabold tracking-tight">Oppstarten ser bra ut</h2>
                   <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
-                    Du har lagt inn abonnementer, datoer, varsler, Gmail og månedlig total.
+                    Du har lagt inn abonnementer og fullført den første oppsigelsen i Aboslutt.
                   </p>
                 </div>
               )}
-              <PlanStatusCard plan={currentPlan} />
+              <PlanStatusCard
+                onUpgradeClick={() =>
+                  setPremiumDialogReason(
+                    "Premium åpner automatisk skanning, varsler, månedlig oppsummering og oppsigelseshjelp.",
+                  )
+                }
+                plan={currentPlan}
+              />
             </div>
           </>
         ) : null}
       </section>
+
+      <PremiumUpgradeDialog
+        onClose={() => setPremiumDialogReason(null)}
+        open={Boolean(premiumDialogReason)}
+        reason={premiumDialogReason ?? undefined}
+      />
 
       <AppFooter compact />
 
@@ -723,6 +917,7 @@ export function DashboardClient() {
 
       {editingSubscription ? (
         <SubscriptionEditModal
+          errors={editFormErrors}
           form={editForm}
           isSaving={isUpdating}
           onClose={() => setEditingSubscription(null)}
@@ -762,6 +957,246 @@ function SummaryCard({
       <p className="mt-2 text-2xl font-black tracking-tight text-[#0D1B2A] sm:text-3xl">{value}</p>
       <p className="mt-1 text-xs font-semibold leading-5 text-[#5F6F82]">{helper}</p>
     </div>
+  );
+}
+
+function FirstTimeOnboarding({
+  hasGoogleGmailConnected,
+  onImportClick,
+}: {
+  hasGoogleGmailConnected: boolean;
+  onImportClick: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
+      <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-[#0D1B2A] p-5 text-white sm:p-6">
+          <p className="text-sm font-bold uppercase tracking-wide text-white/60">Kom i gang</p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+            Få kontroll på første abonnement
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-white/72">
+            Start med én fast kostnad du kjenner. Aboslutt hjelper deg å samle informasjonen, velge
+            oppsigelsesmetode og følge opp til abonnementet er avsluttet.
+          </p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <a
+              className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/25 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1B2A]"
+              href="#manual-add"
+            >
+              Legg til ditt første abonnement
+            </a>
+            <Link
+              className="rounded-xl border border-white/20 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1B2A]"
+              href="/import/email"
+              onClick={onImportClick}
+            >
+              Importer fra e-post
+            </Link>
+          </div>
+          <p className="mt-3 text-xs font-semibold text-white/55">
+            {hasGoogleGmailConnected
+              ? "Google/Gmail er koblet til. Du kan fortsatt legge inn manuelt først."
+              : "E-postimport er valgfritt. Manuell oversikt fungerer uten Gmail."}
+          </p>
+        </div>
+        <div className="p-5 sm:p-6">
+          <OnboardingStepFlow currentStep={1} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OnboardingStepFlow({ currentStep }: { currentStep: number }) {
+  const steps = [
+    {
+      title: "Legg til et abonnement",
+      description: "Registrer navn, pris og neste trekk for en fast kostnad.",
+    },
+    {
+      title: "Velg hvordan det skal sies opp",
+      description: "Marker abonnementer du vurderer å avslutte og bruk oppsigelseshjelpen.",
+    },
+    {
+      title: "Følg opp avslutningen",
+      description: "Se hvilke oppsigelser som venter på svar, krever handling eller er ferdige.",
+    },
+  ];
+
+  return (
+    <ol className="grid gap-3">
+      {steps.map((step, index) => {
+        const stepNumber = index + 1;
+        const isCurrent = stepNumber === currentStep;
+
+        return (
+          <li
+            className={`rounded-2xl border p-4 ${
+              isCurrent ? "border-[#F3C3CC] bg-[#FFF8F9]" : "border-[#DBE4EE] bg-[#F7F9FC]"
+            }`}
+            key={step.title}
+          >
+            <div className="flex gap-3">
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+                  isCurrent ? "bg-[#C8102E] text-white" : "bg-white text-[#5F6F82] ring-1 ring-[#DBE4EE]"
+                }`}
+              >
+                {stepNumber}
+              </span>
+              <div>
+                <p className="font-extrabold text-[#0D1B2A]">{step.title}</p>
+                <p className="mt-1 text-sm leading-6 text-[#5F6F82]">{step.description}</p>
+                {isCurrent ? (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-[#C8102E] ring-1 ring-[#F3C3CC]">
+                    Neste steg
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function SubscriptionsEmptyState({
+  onImportClick,
+}: {
+  onImportClick: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  return (
+    <DashboardEmptyState
+      actionHref="#manual-add"
+      actionLabel="Legg til manuelt"
+      description="Start med abonnementene du allerede kjenner. Når du vil finne flere automatisk, kan du importere fra e-post."
+      eyebrow="Abonnementer"
+      secondaryAction={
+        <Link
+          className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+          href="/import/email"
+          onClick={onImportClick}
+        >
+          Importer fra e-post
+        </Link>
+      }
+      title="Du har ingen abonnementer ennå"
+    />
+  );
+}
+
+function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subscription[] }) {
+  if (subscriptions.length === 0) {
+    return (
+      <DashboardEmptyState
+        actionHref="#subscriptions"
+        actionLabel="Se abonnementer"
+        description="Når du markerer en oppsigelse som fullført, samles historikken her."
+        eyebrow="Oppsigelser"
+        title="Ingen fullførte oppsigelser ennå"
+      />
+    );
+  }
+
+  return (
+    <section className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-extrabold tracking-tight">Fullførte oppsigelser</h2>
+          <p className="mt-1 text-sm text-[#5F6F82]">
+            Abonnementer som er registrert som avsluttet.
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+          {subscriptions.length} fullført
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {subscriptions.slice(0, 4).map((subscription) => (
+          <div className="rounded-xl bg-[#F7F9FC] p-4 ring-1 ring-[#E6EDF5]" key={subscription.id}>
+            <p className="font-extrabold text-[#0D1B2A]">{subscription.name}</p>
+            <p className="mt-1 text-sm text-[#5F6F82]">
+              {getCancellationStatusLabel(subscription.cancellationRequest?.status) ?? "Avsluttet"}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function NotificationsEmptyState({
+  emailRemindersEnabled,
+  hasAnyNextPayment,
+  hasSubscriptions,
+}: {
+  emailRemindersEnabled: boolean;
+  hasAnyNextPayment: boolean;
+  hasSubscriptions: boolean;
+}) {
+  if (emailRemindersEnabled && hasAnyNextPayment) {
+    return (
+      <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+        <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Varsler</p>
+        <h2 className="mt-1 text-lg font-extrabold tracking-tight">Varslene er klare</h2>
+        <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+          Du har abonnementer med kommende trekk, og e-postvarsler er slått på i innstillingene.
+        </p>
+      </section>
+    );
+  }
+
+  const description = !hasSubscriptions
+    ? "Varsler dukker opp når du har lagt inn abonnementer og dato for neste trekk."
+    : !hasAnyNextPayment
+      ? "Legg inn dato for neste trekk på abonnementene dine, så kan Aboslutt hjelpe deg å følge med."
+      : "Slå på e-postvarsler i innstillinger for å få påminnelser før kommende trekk.";
+
+  return (
+    <DashboardEmptyState
+      actionHref={!hasSubscriptions || !hasAnyNextPayment ? "#manual-add" : "/settings"}
+      actionLabel={!hasSubscriptions || !hasAnyNextPayment ? "Oppdater abonnement" : "Åpne innstillinger"}
+      description={description}
+      eyebrow="Varsler"
+      title="Ingen varsler ennå"
+    />
+  );
+}
+
+function DashboardEmptyState({
+  title,
+  description,
+  eyebrow,
+  actionHref,
+  actionLabel,
+  secondaryAction,
+}: {
+  title: string;
+  description: string;
+  eyebrow: string;
+  actionHref?: string;
+  actionLabel?: string;
+  secondaryAction?: ReactNode;
+}) {
+  return (
+    <section className="mt-6 rounded-2xl border border-dashed border-[#C8D4E2] bg-white p-5 text-sm text-[#5F6F82] shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>
+      <h2 className="mt-1 text-xl font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
+      <p className="mt-2 max-w-2xl leading-6">{description}</p>
+      {actionHref && actionLabel ? (
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          <a
+            className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+            href={actionHref}
+          >
+            {actionLabel}
+          </a>
+          {secondaryAction}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1000,11 +1435,19 @@ function getUpcomingPayments(subscriptions: Subscription[]): UpcomingPayment[] {
     .sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime());
 }
 
-function getCancellationFollowUps(subscriptions: Subscription[]) {
+function getActiveCancellations(subscriptions: Subscription[]) {
   return subscriptions.filter((subscription) =>
-    ["awaiting_confirmation", "manual_required", "rejected"].includes(
+    ["draft", "ready", "sent", "awaiting_confirmation", "manual_required", "rejected"].includes(
       subscription.cancellationRequest?.status ?? "",
     ),
+  );
+}
+
+function getCompletedCancellations(subscriptions: Subscription[]) {
+  return subscriptions.filter(
+    (subscription) =>
+      subscription.status === "cancelled" ||
+      subscription.cancellationRequest?.status === "confirmed_cancelled",
   );
 }
 
@@ -1040,6 +1483,21 @@ function getMonthlyEquivalent(subscription: Subscription) {
   return subscription.monthlyCost;
 }
 
+function validateSubscriptionForm(form: SubscriptionForm): SubscriptionFormErrors {
+  const errors: SubscriptionFormErrors = {};
+  const amount = Number(form.monthlyCost);
+
+  if (!form.name.trim()) {
+    errors.name = "Skriv inn navn på abonnementet.";
+  }
+
+  if (!form.monthlyCost.trim() || Number.isNaN(amount) || amount <= 0) {
+    errors.monthlyCost = "Skriv inn et gyldig beløp over 0 kr.";
+  }
+
+  return errors;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(value);
 }
@@ -1065,12 +1523,16 @@ function getSourceLabel(source?: string | null) {
 }
 
 function TextInput({
+  autoComplete,
+  error,
   label,
   value,
   placeholder,
   inputMode,
   onChange,
 }: {
+  autoComplete?: string;
+  error?: string;
   label: string;
   value: string;
   placeholder: string;
@@ -1081,13 +1543,18 @@ function TextInput({
     <label className="text-sm font-semibold text-[#4A5568] md:col-span-1">
       {label}
       <input
-        className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
+        aria-invalid={Boolean(error)}
+        autoComplete={autoComplete}
+        className={`mt-2 w-full rounded-xl border px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A] ${
+          error ? "border-[#C8102E] bg-[#FFF8F9]" : "border-[#DBE4EE]"
+        }`}
         inputMode={inputMode}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={label !== "Notat"}
         value={value}
       />
+      {error ? <span className="mt-1 block text-xs font-bold text-[#C8102E]">{error}</span> : null}
     </label>
   );
 }
@@ -1145,12 +1612,14 @@ function SelectInput({
 }
 
 function SubscriptionEditModal({
+  errors,
   form,
   setForm,
   onClose,
   onSubmit,
   isSaving,
 }: {
+  errors: SubscriptionFormErrors;
   form: SubscriptionForm;
   setForm: Dispatch<SetStateAction<SubscriptionForm>>;
   onClose: () => void;
@@ -1181,12 +1650,14 @@ function SubscriptionEditModal({
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <TextInput
+            error={errors.name}
             label="Navn"
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
             placeholder="F.eks. HBO Max"
             value={form.name}
           />
           <TextInput
+            error={errors.monthlyCost}
             inputMode="numeric"
             label="Kr/mnd"
             onChange={(value) => setForm((current) => ({ ...current, monthlyCost: value }))}
@@ -1243,13 +1714,13 @@ function SubscriptionEditModal({
           >
             Avbryt
           </button>
-          <button
-            className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] disabled:opacity-50"
-            disabled={isSaving}
+          <LoadingButton
+            isLoading={isSaving}
+            loadingLabel="Lagrer..."
             type="submit"
           >
-            {isSaving ? "Lagrer..." : "Lagre endringer"}
-          </button>
+            Lagre endringer
+          </LoadingButton>
         </div>
       </form>
     </div>

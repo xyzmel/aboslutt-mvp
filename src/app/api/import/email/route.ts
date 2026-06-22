@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   if (emailText.length > 20000) {
-    return NextResponse.json({ error: "Teksten er for lang for denne MVP-en." }, { status: 400 });
+    return NextResponse.json({ error: "Teksten er for lang. Lim inn en kortere kvitteringstekst." }, { status: 400 });
   }
 
   const parsedCandidates = parseEmailSubscriptionCandidates(emailText)

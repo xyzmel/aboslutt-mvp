@@ -4,9 +4,10 @@ import { getPlanDisplayName, getPlanFeatures, getUserPlan, type Plan } from "@/l
 type PlanStatusCardProps = {
   plan: string | null | undefined;
   compact?: boolean;
+  onUpgradeClick?: () => void;
 };
 
-export function PlanStatusCard({ plan, compact = false }: PlanStatusCardProps) {
+export function PlanStatusCard({ plan, compact = false, onUpgradeClick }: PlanStatusCardProps) {
   const normalizedPlan = getUserPlan({ plan });
   const features = getPlanFeatures(normalizedPlan);
 
@@ -20,7 +21,7 @@ export function PlanStatusCard({ plan, compact = false }: PlanStatusCardProps) {
           </h2>
           <p className="mt-2 text-sm leading-6 text-[#5F6F82]">{getPlanCtaText(normalizedPlan)}</p>
         </div>
-        <PlanCta plan={normalizedPlan} />
+        <PlanCta onUpgradeClick={onUpgradeClick} plan={normalizedPlan} />
       </div>
 
       {!compact ? (
@@ -33,8 +34,20 @@ export function PlanStatusCard({ plan, compact = false }: PlanStatusCardProps) {
   );
 }
 
-function PlanCta({ plan }: { plan: Plan }) {
+function PlanCta({ plan, onUpgradeClick }: { plan: Plan; onUpgradeClick?: () => void }) {
   if (plan === "free") {
+    if (onUpgradeClick) {
+      return (
+        <button
+          className="rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/20 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+          onClick={onUpgradeClick}
+          type="button"
+        >
+          Oppgrader til Premium
+        </button>
+      );
+    }
+
     return (
       <Link
         className="rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/20 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"

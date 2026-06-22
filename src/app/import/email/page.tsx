@@ -1,11 +1,14 @@
 "use client";
 
 import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
+import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
+import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { useToast } from "@/components/ui/ToastProvider";
 import type { EmailSubscriptionCandidate } from "@/lib/email-subscription-parser";
 import type { EnrichedImportCandidate } from "@/lib/import-candidates";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
@@ -17,6 +20,15 @@ type CandidateDraft = {
   category: SubscriptionCategory;
   billingInterval: BillingInterval;
   nextPayment: string;
+};
+
+type PremiumGateState = {
+  title: string;
+  description: string;
+  benefit: string;
+  blockedAction?: string;
+  currentUsage?: number | null;
+  limit?: number | null;
 };
 
 const categoryLabels: Record<EmailSubscriptionCandidate["category"], string> = {
@@ -34,6 +46,7 @@ const intervalLabels: Record<EmailSubscriptionCandidate["billingInterval"], stri
 };
 
 export default function EmailImportPage() {
+  const { showToast } = useToast();
   const router = useRouter();
   const { data: session, status } = useSession();
   const [emailText, setEmailText] = useState("");
@@ -51,6 +64,8 @@ export default function EmailImportPage() {
   const [candidateDraft, setCandidateDraft] = useState<CandidateDraft | null>(null);
   const [isSavingCandidate, setIsSavingCandidate] = useState(false);
   const [reportingCandidate, setReportingCandidate] = useState<EmailSubscriptionCandidate | null>(null);
+  const [premiumGate, setPremiumGate] = useState<PremiumGateState | null>(null);
+  const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -109,13 +124,21 @@ export default function EmailImportPage() {
       setCandidates(result.candidates);
 
       if (result.candidates.length === 0) {
-        setErrorMessage(
-          "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.",
-        );
+        const message = "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.";
+        setErrorMessage(message);
+        showToast({ title: "Ingen funn", message, tone: "info" });
+      } else {
+        showToast({
+          title: "Forslag funnet",
+          message: `${result.candidates.length} mulige abonnementer er klare for gjennomgang.`,
+          tone: "success",
+        });
       }
-    } catch (error) {
+    } catch {
       setCandidates([]);
-      setErrorMessage(error instanceof Error ? error.message : "Kunne ikke lese e-posten.");
+      const message = "Kunne ikke lese e-posten akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Import feilet", message, tone: "error" });
     } finally {
       setIsParsing(false);
     }
@@ -137,13 +160,21 @@ export default function EmailImportPage() {
       setScannedMessages(result.scannedMessages);
 
       if (result.candidates.length === 0) {
-        setErrorMessage(
-          "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.",
-        );
+        const message = "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.";
+        setErrorMessage(message);
+        showToast({ title: "Ingen funn", message, tone: "info" });
+      } else {
+        showToast({
+          title: "Gmail er skannet",
+          message: `${result.candidates.length} forslag er klare for gjennomgang.`,
+          tone: "success",
+        });
       }
-    } catch (error) {
+    } catch {
       setCandidates([]);
-      setErrorMessage(error instanceof Error ? error.message : "Kunne ikke skanne Gmail.");
+      const message = "Kunne ikke skanne Gmail akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Skanning feilet", message, tone: "error" });
     } finally {
       setIsScanningGmail(false);
     }
@@ -193,19 +224,62 @@ export default function EmailImportPage() {
           source: getCandidateSource(editingCandidate),
         }),
       });
-      const result = await response.json();
+      const result = (await response.json()) as {
+        error?: string;
+        message?: string;
+        currentUsage?: number;
+        limit?: number | null;
+      };
 
       if (!response.ok) {
+        if (result.error === "PLAN_LIMIT_REACHED") {
+          const currentUsage = result.currentUsage ?? 10;
+          const limit = typeof result.limit === "number" ? result.limit : 10;
+          const message = `Du har brukt ${currentUsage} av ${limit} abonnementer i gratisplanen.`;
+          setErrorMessage(message);
+          setPremiumGate({
+            title: "Gratisgrensen er nådd",
+            description: message,
+            benefit: "Premium gir ubegrensede abonnementer og automatisk import fra e-post.",
+            blockedAction: "Forslaget lagres ikke før du sletter et abonnement eller oppgraderer.",
+            currentUsage,
+            limit,
+          });
+          showToast({
+            title: "Gratisgrensen er nådd",
+            message,
+            tone: "info",
+            actionLabel: "Se Premium",
+            onAction: () =>
+              setPremiumGate({
+                title: "Gratisgrensen er nådd",
+                description: message,
+                benefit: "Premium gir ubegrensede abonnementer og automatisk import fra e-post.",
+                blockedAction: "Forslaget lagres ikke før du sletter et abonnement eller oppgraderer.",
+                currentUsage,
+                limit,
+              }),
+          });
+          return;
+        }
+
         throw new Error(result.message ?? result.error ?? "Kunne ikke lagre abonnementet.");
       }
 
       setSavedCandidateName(candidateDraft.merchantName);
+      showToast({
+        title: "Abonnement lagret",
+        message: `${candidateDraft.merchantName} er lagt til i oversikten.`,
+        tone: "success",
+      });
       setEmailText("");
       ignoreCandidate(editingCandidate);
       setEditingCandidate(null);
       setCandidateDraft(null);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Kunne ikke lagre abonnementet.");
+    } catch {
+      const message = "Kunne ikke lagre abonnementet akkurat nå.";
+      setErrorMessage(message);
+      showToast({ title: "Lagring feilet", message, tone: "error" });
     } finally {
       setIsSavingCandidate(false);
     }
@@ -275,9 +349,14 @@ export default function EmailImportPage() {
                 </p>
               ) : null}
               {!gmailScanAvailable ? (
-                <p className="mt-2 rounded-xl bg-[#FFF6E8] px-3 py-2 text-xs font-semibold text-[#8A4B13]">
-                  Automatisk skanning er en Premium-funksjon. Du kan fortsatt legge inn abonnementer manuelt gratis.
-                </p>
+                <div className="mt-4">
+                  <PremiumFeatureGate
+                    benefit="Premium skanner Gmail med read-only tilgang og foreslår abonnementer du kan bekrefte før lagring."
+                    blockedAction="Gmail-skanning starter ikke i gratisplanen."
+                    description="Du kan fortsatt lime inn kvitteringstekst eller legge inn abonnementer manuelt gratis."
+                    title="Gmail-skanning krever Premium"
+                  />
+                </div>
               ) : null}
               <p className="mt-3 text-xs font-semibold text-[#C8102E]">
                 Forslag kan inneholde feil. Bekreft alltid kandidaten før den lagres.
@@ -285,12 +364,17 @@ export default function EmailImportPage() {
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:w-44">
               {!gmailScanAvailable ? (
-                <Link
+                <button
                   className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white hover:bg-[#a90d27]"
-                  href="/pricing"
+                  onClick={() =>
+                    setPremiumDialogReason(
+                      "Automatisk Gmail-skanning er en Premium-funksjon. Du kan fortsatt lime inn kvitteringer eller legge inn manuelt gratis.",
+                    )
+                  }
+                  type="button"
                 >
                   Se Premium
-                </Link>
+                </button>
               ) : !gmailScopeConnected ? (
                 <button
                   className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
@@ -300,14 +384,14 @@ export default function EmailImportPage() {
                   Koble til Gmail
                 </button>
               ) : (
-                <button
-                  className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] disabled:opacity-55"
-                  disabled={isScanningGmail}
+                <LoadingButton
+                  isLoading={isScanningGmail}
+                  loadingLabel="Skanner..."
                   onClick={scanGmail}
                   type="button"
                 >
-                  {isScanningGmail ? "Skanner..." : "Skann Gmail"}
-                </button>
+                  Skann Gmail
+                </LoadingButton>
               )}
             </div>
           </div>
@@ -339,16 +423,23 @@ export default function EmailImportPage() {
             required
             value={emailText}
           />
-          <button
-            className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#15283c] disabled:opacity-55"
-            disabled={isParsing}
+          <LoadingButton
+            className="mt-4 bg-[#0D1B2A] hover:bg-[#15283c]"
+            isLoading={isParsing}
+            loadingLabel="Leser tekst..."
             type="submit"
           >
-            {isParsing ? "Leser tekst..." : "Finn abonnement"}
-          </button>
+            Finn abonnement
+          </LoadingButton>
         </form>
 
-        {errorMessage ? (
+        {premiumGate ? (
+          <div className="mt-5">
+            <PremiumFeatureGate {...premiumGate} onClose={() => setPremiumGate(null)} />
+          </div>
+        ) : null}
+
+        {errorMessage && !premiumGate ? (
           <div className="mt-5 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-4 text-sm font-semibold text-[#C8102E]">
             {errorMessage}
           </div>
@@ -403,6 +494,11 @@ export default function EmailImportPage() {
             }}
           />
         ) : null}
+        <PremiumUpgradeDialog
+          onClose={() => setPremiumDialogReason(null)}
+          open={Boolean(premiumDialogReason)}
+          reason={premiumDialogReason ?? undefined}
+        />
       </section>
 
       <AppFooter compact />

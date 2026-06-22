@@ -25,17 +25,17 @@ export default async function OnboardingPage() {
       <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-10">
         <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Kom i gang</p>
         <h1 className="mt-2 max-w-2xl text-4xl font-extrabold tracking-tight">
-          Start med abonnementene du allerede kjenner
+          Få oversikt på få minutter
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-          Du trenger ikke koble til Gmail for å bruke Aboslutt. Legg inn
-          abonnementene dine manuelt først, og bruk Gmail-skanning senere hvis du
-          vil la Aboslutt foreslå flere kandidater automatisk.
+          Start med ett abonnement du kjenner. Aboslutt hjelper deg å holde orden,
+          velge hvordan abonnementet kan sies opp og følge opp til jobben er gjort.
+          E-postimport er valgfritt og kan brukes senere.
         </p>
 
         <div className="mt-6 max-w-2xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE]">
           <div className="flex items-center justify-between gap-4 text-sm font-bold">
-            <span>3 korte steg</span>
+            <span>3 tydelige steg</span>
             <Link className="text-[#C8102E] hover:underline" href="/dashboard?start=manual">
               Hopp over
             </Link>
@@ -47,24 +47,38 @@ export default async function OnboardingPage() {
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <OnboardingCard
-            action="Legg til manuelt"
-            description="Registrer navn, pris og neste trekk for abonnementene du vet om."
+            action="Legg til ditt første abonnement"
+            description="Registrer navn, pris og neste trekk for en fast kostnad du allerede kjenner."
             href="/dashboard?start=manual"
             recommended
-            title="1. Legg inn manuelt"
+            title="1. Legg til abonnement"
           />
           <OnboardingCard
-            action="Skann Gmail"
-            description="Valgfritt: bruk Gmail read-only for å finne kvitteringer og mulige abonnementer."
+            action="Åpne oversikten"
+            description="Når abonnementet ligger i oversikten, kan du markere det og velge hvordan det skal avsluttes."
+            href="/dashboard#subscriptions"
+            title="2. Velg hvordan du vil si opp"
+          />
+          <OnboardingCard
+            action="Se oppfølging"
+            description="Følg aktive oppsigelser, se hva som venter på svar og marker jobben som fullført."
+            href="/dashboard#cancellations"
+            title="3. Følg opp oppsigelsen"
+          />
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-white p-5 text-sm leading-6 text-[#5F6F82] shadow-sm ring-1 ring-[#DBE4EE]">
+          <p className="font-extrabold text-[#0D1B2A]">Vil du finne flere automatisk?</p>
+          <p className="mt-1">
+            Du kan importere fra e-post når du ønsker det. Aboslutt foreslår mulige abonnementer,
+            og du bekrefter selv hva som skal lagres.
+          </p>
+          <Link
+            className="mt-4 inline-flex rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
             href="/import/email"
-            title="2. Finn flere automatisk"
-          />
-          <OnboardingCard
-            action="Se hvordan det fungerer"
-            description="Gå til oversikten, velg abonnementer og marker dem som avsluttet i Aboslutt."
-            href="/dashboard?start=manual"
-            title="3. Følg opp"
-          />
+          >
+            Importer fra e-post
+          </Link>
         </div>
       </section>
       <AppFooter compact />

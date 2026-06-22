@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import type { CheckoutPlanId } from "@/lib/billing/plans";
 import { siteConfig } from "@/lib/site-config";
 
-export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: string }) {
+export function CheckoutButton({
+  plan,
+  label,
+  surface = "dark",
+}: {
+  plan: CheckoutPlanId;
+  label: string;
+  surface?: "dark" | "light";
+}) {
+  const { showToast } = useToast();
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,10 +43,26 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
       }
 
       trackFunnelEvent("checkout_failed", { plan, reason: result.error ?? "unknown" });
-      setMessage(getCheckoutErrorMessage(result.error));
+      const errorMessage = getCheckoutErrorMessage(result.error);
+      setMessage(errorMessage);
+      showToast({
+        title: "Betaling kunne ikke startes",
+        message: errorMessage,
+        tone: "error",
+        actionLabel: "Prøv igjen",
+        onAction: startCheckout,
+      });
     } catch {
       trackFunnelEvent("checkout_failed", { plan, reason: "network" });
-      setMessage(`Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`);
+      const errorMessage = `Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`;
+      setMessage(errorMessage);
+      showToast({
+        title: "Nettverksfeil",
+        message: errorMessage,
+        tone: "error",
+        actionLabel: "Prøv igjen",
+        onAction: startCheckout,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -43,15 +70,20 @@ export function CheckoutButton({ plan, label }: { plan: CheckoutPlanId; label: s
 
   return (
     <div>
-      <button
-        className="mt-6 w-full rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#a90d27] disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isLoading}
+      <LoadingButton
+        className="mt-6 w-full"
+        isLoading={isLoading}
+        loadingLabel="Sender deg til Vipps..."
         onClick={startCheckout}
         type="button"
       >
-        {isLoading ? "Sender deg til Vipps..." : label}
-      </button>
-      {message ? <p className="mt-2 text-xs font-semibold text-white/70">{message}</p> : null}
+        {label}
+      </LoadingButton>
+      {message ? (
+        <p className={`mt-2 text-xs font-semibold ${surface === "dark" ? "text-white/70" : "text-[#C8102E]"}`}>
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

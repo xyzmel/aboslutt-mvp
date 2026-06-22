@@ -2,11 +2,13 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
+import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
 import {
   type CancellationProvider,
   type CancellationProviderMethod,
   getCancellationMethodLabel,
 } from "@/data/cancellation-providers";
+import { useToast } from "@/components/ui/ToastProvider";
 import { getCancellationEventLabel, getCancellationStatusLabel } from "@/lib/cancellation";
 import type { Subscription } from "@/types/subscription";
 
@@ -65,6 +67,7 @@ export function CancellationEmailClient({
   initialRequest,
   provider,
 }: CancellationEmailClientProps) {
+  const { showToast } = useToast();
   const initialMethod = getInitialMethod(initialRequest?.method, provider);
   const generatedDraft = useMemo(
     () => createLocalDraft(subscription.name, currentUserName ?? "", currentUserEmail ?? "", "", ""),
@@ -128,8 +131,11 @@ export function CancellationEmailClient({
 
       setRequest(result.request);
       setMessage("Utkastet er lagret. Kontroller teksten før du sender eller bruker leverandørens anbefalte metode.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke lagre utkastet.");
+      showToast({ title: "Utkast lagret", message: "Oppsigelsesutkastet er klart.", tone: "success" });
+    } catch {
+      const userMessage = "Kunne ikke lagre utkastet akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Lagring feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -168,8 +174,11 @@ export function CancellationEmailClient({
 
       setRequest(result.request);
       setMessage("Oppsigelsen er sendt. Abonnementet er ikke markert som avsluttet før du bekrefter svar fra leverandøren.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke sende oppsigelsen.");
+      showToast({ title: "Oppsigelse sendt", message: "Følg opp når leverandøren svarer.", tone: "success" });
+    } catch {
+      const userMessage = "Kunne ikke sende oppsigelsen akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Sending feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -201,8 +210,11 @@ export function CancellationEmailClient({
           ? "Bekreftet som avsluttet. Abonnementet er markert som avsluttet."
           : "Status er oppdatert.",
       );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke oppdatere status.");
+      showToast({ title: "Status oppdatert", message: "Oppsigelsen er lagret.", tone: "success" });
+    } catch {
+      const userMessage = "Kunne ikke oppdatere status akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Oppdatering feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -232,8 +244,11 @@ export function CancellationEmailClient({
       setRequest(result.request);
       setNote("");
       setMessage("Notatet er lagt til.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kunne ikke lagre notatet.");
+      showToast({ title: "Notat lagt til", message: "Notatet er lagret på oppsigelsen.", tone: "success" });
+    } catch {
+      const userMessage = "Kunne ikke lagre notatet akkurat nå.";
+      setMessage(userMessage);
+      showToast({ title: "Lagring feilet", message: userMessage, tone: "error" });
     } finally {
       setIsWorking(false);
     }
@@ -242,6 +257,7 @@ export function CancellationEmailClient({
   async function copyDraft() {
     await navigator.clipboard.writeText(`${form.subject}\n\n${form.body}`).catch(() => null);
     setMessage("Utkastet er kopiert.");
+    showToast({ title: "Kopiert", message: "Utkastet ligger på utklippstavlen.", tone: "success" });
   }
 
   return (
@@ -270,8 +286,13 @@ export function CancellationEmailClient({
             Aboslutt sender bare e-post på dine vegne når du godkjenner det. Abonnementet regnes ikke som avsluttet før leverandøren bekrefter det.
           </div>
           {!canSend ? (
-            <div className="mt-4 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#5F6F82]">
-              Gratis-planen kan lage og kopiere utkast. Sending via Aboslutt krever Premium.
+            <div className="mt-4">
+              <PremiumFeatureGate
+                benefit="Premium lar deg sende oppsigelser via Aboslutt når leverandøren støtter e-postmetoden."
+                blockedAction="Sending via Aboslutt er ikke tilgjengelig i gratisplanen."
+                description="Du kan fortsatt lage og kopiere oppsigelsesutkastet gratis."
+                title="Sending krever Premium"
+              />
             </div>
           ) : null}
         </aside>

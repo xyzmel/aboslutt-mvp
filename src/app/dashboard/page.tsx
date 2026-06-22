@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import { getCurrentAppUser } from "@/lib/current-user";
+import { logger } from "@/lib/logger";
 
 type DashboardPageProps = {
   searchParams: Promise<{ start?: string }>;
@@ -44,5 +45,5 @@ function DashboardLoadError() {
 
 function logServerError(route: string, error: unknown, userId?: string) {
   const safeError = error instanceof Error ? { name: error.name, message: error.message } : { message: "Ukjent feil" };
-  console.error("[server-render]", { route, userId, ...safeError });
+  logger.error("[server-render]", { route, userId, ...safeError });
 }
