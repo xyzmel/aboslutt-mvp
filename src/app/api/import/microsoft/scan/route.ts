@@ -7,6 +7,7 @@ import {
   MicrosoftGraphError,
   readSignedInMicrosoftMailbox,
 } from "@/lib/microsoft-graph";
+import { getMicrosoftScanErrorCode } from "@/lib/microsoft-oauth-config.mjs";
 import { detectOutlookSubscriptionCandidates } from "@/lib/microsoft-outlook-detector.mjs";
 import { toPrismaJson } from "@/lib/prisma-json";
 import { prisma } from "@/lib/prisma";
@@ -52,8 +53,8 @@ export async function POST(request: Request) {
       {
         ok: false,
         status: "scan_failed",
-        error: "RECONNECT_REQUIRED",
-        message: "Tilkoblingen til Outlook har utløpt.",
+        error: "NOT_CONNECTED",
+        message: "Koble til Outlook for å skanne e-post.",
       },
       { status: 403 },
     );
@@ -91,7 +92,10 @@ export async function POST(request: Request) {
             : "Vi fant ingen sikre abonnementer i denne skanningen.",
     });
   } catch (error) {
-    if (error instanceof MicrosoftGraphError && error.code === "MICROSOFT_RECONNECT_REQUIRED") {
+    if (
+      error instanceof MicrosoftGraphError &&
+      (error.code === "MICROSOFT_RECONNECT_REQUIRED" || error.code === "MICROSOFT_GRAPH_UNAUTHORIZED")
+    ) {
       await invalidateMicrosoftAccount(currentUser.id);
     }
 
@@ -100,7 +104,7 @@ export async function POST(request: Request) {
       {
         ok: false,
         status: "scan_failed",
-        error: getMicrosoftScanErrorCode(error),
+        error: error instanceof MicrosoftGraphError ? getMicrosoftScanErrorCode(error.code) : "SCAN_FAILED",
         message: getSafeMicrosoftScanMessage(error),
       },
       { status },
@@ -110,7 +114,7 @@ export async function POST(request: Request) {
 
 function getSafeMicrosoftScanMessage(error: unknown) {
   if (error instanceof MicrosoftGraphError) {
-    if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
+    if (error.code === "MICROSOFT_RECONNECT_REQUIRED" || error.code === "MICROSOFT_GRAPH_UNAUTHORIZED") {
       return "Tilkoblingen til Outlook har utløpt.";
     }
 
@@ -122,20 +126,4 @@ function getSafeMicrosoftScanMessage(error: unknown) {
   }
 
   return "Vi klarte ikke å skanne e-posten. Prøv igjen.";
-}
-
-function getMicrosoftScanErrorCode(error: unknown) {
-  if (!(error instanceof MicrosoftGraphError)) {
-    return "SCAN_FAILED";
-  }
-
-  if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
-    return "CONNECTION_EXPIRED";
-  }
-
-  if (error.code === "MICROSOFT_THROTTLED") {
-    return "MICROSOFT_THROTTLED";
-  }
-
-  return "SCAN_FAILED";
 }

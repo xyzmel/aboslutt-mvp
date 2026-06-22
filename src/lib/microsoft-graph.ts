@@ -2,6 +2,15 @@ import "server-only";
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { logger } from "@/lib/logger";
+import {
+  getMicrosoftAuthorizeUrlBase,
+  getMicrosoftTokenUrl,
+  isMicrosoftReconnectTokenError,
+  isTenantSpecificMicrosoftAuthority,
+  microsoftCommonAuthority,
+  normalizeMicrosoftProfile,
+} from "@/lib/microsoft-oauth-config.mjs";
 import { prisma } from "@/lib/prisma";
 
 const provider = "microsoft";
@@ -47,6 +56,7 @@ export class MicrosoftGraphError extends Error {
       | "MICROSOFT_TOKEN_EXCHANGE_FAILED"
       | "MICROSOFT_PROFILE_FAILED"
       | "MICROSOFT_RECONNECT_REQUIRED"
+      | "MICROSOFT_GRAPH_UNAUTHORIZED"
       | "MICROSOFT_THROTTLED"
       | "MICROSOFT_PARTIAL_SCAN"
       | "MICROSOFT_GRAPH_FAILED",
@@ -75,6 +85,7 @@ export type MicrosoftMailboxScanResult = {
 };
 
 export function isMicrosoftGraphConfigured() {
+  warnIfTenantSpecificMicrosoftConfig();
   return getMissingMicrosoftConfig().length === 0;
 }
 
@@ -82,7 +93,6 @@ export function getMissingMicrosoftConfig() {
   const required = [
     "MICROSOFT_CLIENT_ID",
     "MICROSOFT_CLIENT_SECRET",
-    "MICROSOFT_TENANT_ID",
     "MICROSOFT_REDIRECT_URI",
     "MICROSOFT_TOKEN_ENCRYPTION_KEY",
   ] as const;
@@ -104,7 +114,7 @@ export async function createMicrosoftAuthorizationUrl(userId: string) {
     maxAge: 10 * 60,
   });
 
-  const url = new URL(`${config.authority}/oauth2/v2.0/authorize`);
+  const url = new URL(getMicrosoftAuthorizeUrlBase());
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", config.redirectUri);
@@ -142,11 +152,19 @@ export async function handleMicrosoftOAuthCallback({
   }
 
   const profile = await getMicrosoftProfile(tokenResponse.access_token);
-  const providerAccountId = profile.id;
+  const { providerAccountId, providerEmail } = normalizeMicrosoftProfile(profile);
 
   if (!providerAccountId) {
     throw new MicrosoftGraphError("MICROSOFT_PROFILE_FAILED", "Microsoft-kontoen mangler konto-ID.", 502);
   }
+
+  await prisma.account.deleteMany({
+    where: {
+      userId,
+      provider,
+      providerAccountId: { not: providerAccountId },
+    },
+  });
 
   await prisma.account.upsert({
     where: {
@@ -160,6 +178,7 @@ export async function handleMicrosoftOAuthCallback({
       type: "oauth",
       provider,
       providerAccountId,
+      providerEmail,
       access_token: encryptToken(tokenResponse.access_token),
       refresh_token: tokenResponse.refresh_token ? encryptToken(tokenResponse.refresh_token) : null,
       expires_at: tokenResponse.expires_in ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in : null,
@@ -168,6 +187,7 @@ export async function handleMicrosoftOAuthCallback({
     },
     update: {
       userId,
+      providerEmail,
       access_token: encryptToken(tokenResponse.access_token),
       refresh_token: tokenResponse.refresh_token ? encryptToken(tokenResponse.refresh_token) : undefined,
       expires_at: tokenResponse.expires_in ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in : undefined,
@@ -177,7 +197,7 @@ export async function handleMicrosoftOAuthCallback({
   });
 
   return {
-    email: profile.mail ?? profile.userPrincipalName ?? null,
+    email: providerEmail,
     name: profile.displayName ?? null,
   };
 }
@@ -228,7 +248,7 @@ export async function refreshMicrosoftAccessToken(account: {
 
   const config = getMicrosoftConfig();
   const refreshToken = decryptToken(account.refresh_token);
-  const response = await fetch(`${config.authority}/oauth2/v2.0/token`, {
+  const response = await fetch(getMicrosoftTokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -243,10 +263,11 @@ export async function refreshMicrosoftAccessToken(account: {
   const tokenResponse = (await response.json().catch(() => ({}))) as MicrosoftTokenResponse;
 
   if (!response.ok || !tokenResponse.access_token) {
+    const reconnectRequired = isMicrosoftReconnectTokenError(response.status, tokenResponse);
     throw new MicrosoftGraphError(
       "MICROSOFT_RECONNECT_REQUIRED",
       "Microsoft-tilgangen er utløpt. Koble til Outlook på nytt.",
-      response.status === 403 ? 403 : 401,
+      reconnectRequired ? 401 : response.status === 403 ? 403 : 401,
     );
   }
 
@@ -339,7 +360,7 @@ async function fetchMicrosoftGraphPage(url: string, accessToken: string): Promis
 
     if (response.status === 401 || response.status === 403) {
       throw new MicrosoftGraphError(
-        "MICROSOFT_RECONNECT_REQUIRED",
+        "MICROSOFT_GRAPH_UNAUTHORIZED",
         "Microsoft-tilgangen er utløpt eller trukket tilbake. Koble til Outlook på nytt.",
         response.status,
       );
@@ -388,7 +409,7 @@ export function getMicrosoftProviderName() {
 
 async function exchangeCodeForTokens(code: string) {
   const config = getMicrosoftConfig();
-  const response = await fetch(`${config.authority}/oauth2/v2.0/token`, {
+  const response = await fetch(getMicrosoftTokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -420,6 +441,10 @@ async function getMicrosoftProfile(accessToken: string) {
     cache: "no-store",
   });
   const profile = (await response.json().catch(() => ({}))) as MicrosoftProfile;
+
+  if (response.status === 401 || response.status === 403) {
+    throw new MicrosoftGraphError("MICROSOFT_GRAPH_UNAUTHORIZED", "Kunne ikke lese Microsoft-profilen.", response.status);
+  }
 
   if (!response.ok || !profile.id) {
     throw new MicrosoftGraphError("MICROSOFT_PROFILE_FAILED", "Kunne ikke lese Microsoft-profilen.", 502);
@@ -534,10 +559,10 @@ function getMicrosoftConfig() {
 
   const clientId = process.env.MICROSOFT_CLIENT_ID?.trim();
   const clientSecret = process.env.MICROSOFT_CLIENT_SECRET?.trim();
-  const tenantId = process.env.MICROSOFT_TENANT_ID?.trim();
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI?.trim();
+  warnIfTenantSpecificMicrosoftConfig();
 
-  if (!clientId || !clientSecret || !tenantId || !redirectUri) {
+  if (!clientId || !clientSecret || !redirectUri) {
     throw new MicrosoftGraphError(
       "MICROSOFT_NOT_CONFIGURED",
       "Outlook er midlertidig utilgjengelig.",
@@ -545,12 +570,21 @@ function getMicrosoftConfig() {
     );
   }
 
-  const authority = `https://login.microsoftonline.com/${tenantId}`;
-
   return {
     clientId,
     clientSecret,
-    authority,
+    authority: microsoftCommonAuthority,
     redirectUri,
   };
+}
+
+function warnIfTenantSpecificMicrosoftConfig() {
+  const tenantId = process.env.MICROSOFT_TENANT_ID?.trim();
+
+  if (isTenantSpecificMicrosoftAuthority(tenantId)) {
+    logger.warn("[microsoft:tenant-specific-config]", {
+      message: "Microsoft OAuth uses /common, but MICROSOFT_TENANT_ID is tenant-specific. Entra signInAudience must support personal and organizational accounts.",
+      tenantConfigured: true,
+    });
+  }
 }

@@ -6,6 +6,17 @@ import {
   extractAmountAndCurrency,
 } from "../src/lib/microsoft-outlook-detector.mjs";
 import {
+  getMicrosoftAuthorizeUrlBase,
+  getMicrosoftConnectionState,
+  getMicrosoftScanErrorCode,
+  getMicrosoftTokenUrl,
+  getStaleMicrosoftAccountIds,
+  isMicrosoftReconnectTokenError,
+  isTenantSpecificMicrosoftAuthority,
+  mergeMicrosoftRefreshToken,
+  normalizeMicrosoftProfile,
+} from "../src/lib/microsoft-oauth-config.mjs";
+import {
   matchSelectedOutlookCandidates,
   summarizeOutlookImportResults,
   validateOutlookCandidateForImport,
@@ -178,4 +189,97 @@ test("summarizes partial batch failures without failing the whole import", () =>
   assert.equal(summary.scanStatus, "partial_failed");
   assert.equal(summary.importedCount, 1);
   assert.equal(summary.failedCount, 1);
+});
+
+test("uses Microsoft common authority for authorization and token exchange", () => {
+  assert.equal(
+    getMicrosoftAuthorizeUrlBase(),
+    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+  );
+  assert.equal(getMicrosoftTokenUrl(), "https://login.microsoftonline.com/common/oauth2/v2.0/token");
+  assert.equal(isTenantSpecificMicrosoftAuthority("common"), false);
+  assert.equal(isTenantSpecificMicrosoftAuthority("Default Directory"), true);
+  assert.equal(isTenantSpecificMicrosoftAuthority("11111111-1111-1111-1111-111111111111"), true);
+});
+
+test("normalizes personal Microsoft account callback profile", () => {
+  const profile = normalizeMicrosoftProfile({
+    id: "personal-account-id",
+    mail: "person@hotmail.com",
+    userPrincipalName: "person@hotmail.com",
+  });
+
+  assert.deepEqual(profile, {
+    providerAccountId: "personal-account-id",
+    providerEmail: "person@hotmail.com",
+  });
+});
+
+test("normalizes organizational Microsoft account callback profile", () => {
+  const profile = normalizeMicrosoftProfile({
+    id: "org-account-id",
+    userPrincipalName: "employee@example.com",
+  });
+
+  assert.deepEqual(profile, {
+    providerAccountId: "org-account-id",
+    providerEmail: "employee@example.com",
+  });
+});
+
+test("preserves previous refresh token when refresh response omits replacement", () => {
+  assert.equal(mergeMicrosoftRefreshToken("old-refresh", { access_token: "new-access" }), "old-refresh");
+  assert.equal(
+    mergeMicrosoftRefreshToken("old-refresh", { access_token: "new-access", refresh_token: "new-refresh" }),
+    "new-refresh",
+  );
+});
+
+test("detects invalid grant refresh responses that require reconnection", () => {
+  assert.equal(isMicrosoftReconnectTokenError(400, { error: "invalid_grant" }), true);
+  assert.equal(
+    isMicrosoftReconnectTokenError(400, { error: "invalid_request", error_description: "Consent has been revoked" }),
+    true,
+  );
+  assert.equal(isMicrosoftReconnectTokenError(500, { error: "temporarily_unavailable" }), false);
+});
+
+test("maps 401 Graph response to safe scan authorization error", () => {
+  assert.equal(getMicrosoftScanErrorCode("MICROSOFT_GRAPH_UNAUTHORIZED"), "GRAPH_UNAUTHORIZED");
+  assert.equal(getMicrosoftScanErrorCode("MICROSOFT_RECONNECT_REQUIRED"), "RECONNECT_REQUIRED");
+  assert.equal(getMicrosoftScanErrorCode("MICROSOFT_THROTTLED"), "MICROSOFT_THROTTLED");
+  assert.equal(getMicrosoftScanErrorCode("OTHER"), "SCAN_FAILED");
+});
+
+test("identifies duplicate Microsoft Account rows to remove on reconnect", () => {
+  const staleIds = getStaleMicrosoftAccountIds(
+    [
+      { id: "keep", userId: "user-1", providerAccountId: "new-account" },
+      { id: "remove-1", userId: "user-1", providerAccountId: "old-account" },
+      { id: "other-user", userId: "user-2", providerAccountId: "old-account" },
+    ],
+    "user-1",
+    "new-account",
+  );
+
+  assert.deepEqual(staleIds, ["remove-1"]);
+});
+
+test("connection state is never both connected and expired", () => {
+  assert.equal(
+    getMicrosoftConnectionState({ hasAccount: true, credentialsValid: true, reconnectRequired: false }),
+    "connected",
+  );
+  assert.equal(
+    getMicrosoftConnectionState({ hasAccount: true, credentialsValid: true, reconnectRequired: true }),
+    "expired",
+  );
+  assert.equal(
+    getMicrosoftConnectionState({ hasAccount: true, credentialsValid: false, reconnectRequired: false }),
+    "expired",
+  );
+  assert.equal(
+    getMicrosoftConnectionState({ hasAccount: false, credentialsValid: false, reconnectRequired: false }),
+    "disconnected",
+  );
 });

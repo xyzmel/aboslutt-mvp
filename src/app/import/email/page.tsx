@@ -296,7 +296,15 @@ export default function EmailImportPage() {
         const message = result.message ?? getMicrosoftConnectionMessage(result.error ?? "SCAN_FAILED");
         const code = result.error ?? "SCAN_FAILED";
 
-        if (code === "CONNECTION_EXPIRED" || code === "RECONNECT_REQUIRED") {
+        if (code === "NOT_CONNECTED") {
+          setMicrosoftConnected(false);
+          setMicrosoftImportState("not_connected");
+          setMicrosoftEmail(null);
+          setMicrosoftMessage("Koble til Outlook for å skanne e-post.");
+          return;
+        }
+
+        if (code === "CONNECTION_EXPIRED" || code === "RECONNECT_REQUIRED" || code === "GRAPH_UNAUTHORIZED") {
           setMicrosoftConnected(false);
           setMicrosoftImportState("expired");
           setMicrosoftEmail(null);

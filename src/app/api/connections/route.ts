@@ -26,7 +26,7 @@ export async function GET() {
   });
   const microsoftAccount = await prisma.account.findFirst({
     where: { userId: currentUser.id, provider: getMicrosoftProviderName() },
-    select: { id: true, access_token: true, refresh_token: true, expires_at: true, scope: true },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true, scope: true, providerEmail: true },
   });
   let microsoftConnected = false;
   let microsoftEmail: string | null = null;
@@ -36,10 +36,14 @@ export async function GET() {
     try {
       const connection = await validateMicrosoftConnection(microsoftAccount);
       microsoftConnected = true;
-      microsoftEmail = connection.email ?? currentUser.email ?? null;
+      microsoftEmail = connection.email ?? microsoftAccount.providerEmail ?? null;
     } catch (error) {
-      microsoftExpired = error instanceof MicrosoftGraphError && error.code === "MICROSOFT_RECONNECT_REQUIRED";
-      await invalidateMicrosoftAccount(currentUser.id);
+      microsoftExpired =
+        error instanceof MicrosoftGraphError &&
+        (error.code === "MICROSOFT_RECONNECT_REQUIRED" || error.code === "MICROSOFT_GRAPH_UNAUTHORIZED");
+      if (microsoftExpired) {
+        await invalidateMicrosoftAccount(currentUser.id);
+      }
       logger.warn("[microsoft:connection-invalid]", {
         error: error instanceof MicrosoftGraphError ? error.code : "MICROSOFT_CONNECTION_INVALID",
         userId: currentUser.id,
@@ -53,6 +57,7 @@ export async function GET() {
     gmailScanAvailable: canUseGmailScan(currentUser),
     microsoftConnected,
     microsoftExpired,
+    microsoftStatus: microsoftConnected ? "connected" : microsoftExpired ? "expired" : "disconnected",
     microsoftMailScopeConnected: microsoftConnected && Boolean(microsoftAccount?.scope?.split(" ").includes("Mail.Read")),
     microsoftConfigured: isMicrosoftGraphConfigured(),
     microsoftEmail,

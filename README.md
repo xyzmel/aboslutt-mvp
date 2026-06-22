@@ -321,7 +321,23 @@ MICROSOFT_REDIRECT_URI=https://www.aboslutt.no/api/import/microsoft/callback
 MICROSOFT_TOKEN_ENCRYPTION_KEY=lang-tilfeldig-secret
 ```
 
-`MICROSOFT_TOKEN_ENCRYPTION_KEY` brukes til AES-GCM-kryptering av lagrede Microsoft access/refresh tokens. Hvis den mangler, faller koden tilbake til `NEXTAUTH_SECRET`, men produksjon bør ha en egen verdi. Tokens lagres server-side i `Account`-tabellen, eksponeres aldri til nettleseren, og slettes når brukeren kobler fra Microsoft.
+Microsoft OAuth skal alltid bruke `/common`-authority:
+
+```text
+https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+https://login.microsoftonline.com/common/oauth2/v2.0/token
+```
+
+Entra app registration må ha:
+
+```text
+signInAudience: AzureADandPersonalMicrosoftAccount
+Supported account type: Accounts in any organizational directory and personal Microsoft accounts
+```
+
+Ikke bruk en tenant-spesifikk directory ID, `organizations`, eller navnet på en standard directory som authority. `MICROSOFT_TENANT_ID=common` er produksjonsverdien for Aboslutt.
+
+`MICROSOFT_TOKEN_ENCRYPTION_KEY` brukes til AES-GCM-kryptering av lagrede Microsoft access/refresh tokens og må finnes i produksjon. Tokens lagres server-side i `Account`-tabellen, eksponeres aldri til nettleseren, og slettes når brukeren kobler fra Microsoft.
 
 Første fase implementerer konto-tilkobling, trygg frakobling og en manuell testskann av innboksen. Abonnementsgjenkjenning, AI-analyse og automatisk recurring skanning er ikke implementert ennå.
 
