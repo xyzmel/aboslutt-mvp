@@ -1,6 +1,7 @@
 "use client";
 
-import { Dispatch, FormEvent, MouseEvent, SetStateAction, useEffect, useMemo, useState } from "react";
+import { Dispatch, FormEvent, MouseEvent, ReactNode, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
@@ -40,7 +41,8 @@ type MicrosoftImportState =
   | "scan_failed"
   | "no_candidates"
   | "review_results"
-  | "disconnected";
+  | "disconnected"
+  | "expired";
 
 type OutlookCandidate = {
   id: string;
@@ -110,6 +112,7 @@ export default function EmailImportPage() {
   const [reportingCandidate, setReportingCandidate] = useState<EmailSubscriptionCandidate | null>(null);
   const [premiumGate, setPremiumGate] = useState<PremiumGateState | null>(null);
   const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
+  const lastToastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -133,6 +136,7 @@ export default function EmailImportPage() {
         microsoftConnected?: boolean;
         microsoftConfigured?: boolean;
         microsoftEmail?: string | null;
+        microsoftExpired?: boolean;
       };
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
@@ -140,6 +144,11 @@ export default function EmailImportPage() {
       setMicrosoftConnected(Boolean(result.microsoftConnected));
       setMicrosoftConfigured(Boolean(result.microsoftConfigured));
       setMicrosoftEmail(result.microsoftEmail ?? null);
+      const microsoftExpired = Boolean(result.microsoftExpired);
+      if (microsoftExpired) {
+        setMicrosoftImportState("expired");
+        setMicrosoftMessage("Tilkoblingen til Outlook har utløpt.");
+      }
       const microsoft = searchParams.get("microsoft");
 
       if (microsoft === "connected") {
@@ -155,12 +164,14 @@ export default function EmailImportPage() {
       }
 
       if (microsoft) {
-        setMicrosoftImportState(microsoft === "expired" || microsoft === "cancelled" ? "not_connected" : "scan_failed");
+        setMicrosoftImportState(microsoft === "expired" || microsoft === "cancelled" ? "expired" : "scan_failed");
         setMicrosoftMessage(getMicrosoftConnectionMessage(microsoft));
         return;
       }
 
-      setMicrosoftImportState(result.microsoftConnected ? "connected" : "not_connected");
+      if (!microsoftExpired) {
+        setMicrosoftImportState(result.microsoftConnected ? "connected" : "not_connected");
+      }
     }
 
     loadConnectionStatus();
@@ -259,12 +270,15 @@ export default function EmailImportPage() {
 
     setMicrosoftImportState("connecting");
     setMicrosoftMessage("Kobler til Microsoft ...");
+    lastToastKeyRef.current = null;
   }
 
   async function scanMicrosoft() {
     setMicrosoftImportState("scanning");
     setMicrosoftMessage(null);
     setMicrosoftMessagesChecked(null);
+    setMicrosoftScanId(null);
+    setMicrosoftCandidates([]);
 
     try {
       const response = await fetch("/api/import/microsoft/scan", { method: "POST" });
@@ -279,7 +293,19 @@ export default function EmailImportPage() {
       };
 
       if (!response.ok) {
-        throw new Error(result.message ?? getMicrosoftConnectionMessage(result.error ?? "failed"));
+        const message = result.message ?? getMicrosoftConnectionMessage(result.error ?? "SCAN_FAILED");
+        const code = result.error ?? "SCAN_FAILED";
+
+        if (code === "CONNECTION_EXPIRED" || code === "RECONNECT_REQUIRED") {
+          setMicrosoftConnected(false);
+          setMicrosoftImportState("expired");
+          setMicrosoftEmail(null);
+          setMicrosoftMessage("Tilkoblingen til Outlook har utløpt.");
+          showImportToast("outlook-expired", "Outlook må kobles til på nytt", "Tilkoblingen til Outlook har utløpt.", "error");
+          return;
+        }
+
+        throw new Error(message);
       }
 
       const candidates = Array.isArray(result.candidates) ? result.candidates : [];
@@ -288,21 +314,18 @@ export default function EmailImportPage() {
       setMicrosoftMessagesChecked(result.messagesChecked ?? 0);
       setMicrosoftCandidates(candidates);
       setMicrosoftMessage(result.message ?? "Outlook-skanningen er fullført.");
-      showToast({
-        title: candidates.length > 0 ? "Outlook-forslag funnet" : "Ingen sikre Outlook-funn",
-        message:
-          candidates.length > 0
-            ? `${candidates.length} mulige abonnementer er klare for gjennomgang.`
-            : "Vi fant ingen sikre abonnementer denne gangen.",
-        tone: candidates.length > 0 ? "success" : "info",
-      });
+      showImportToast("outlook-scan-success", candidates.length > 0 ? "Outlook-forslag funnet" : "Ingen sikre Outlook-funn",
+        candidates.length > 0
+          ? `${candidates.length} mulige abonnementer er klare for gjennomgang.`
+          : "Vi fant ingen sikre abonnementer i denne skanningen.",
+        candidates.length > 0 ? "success" : "info");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Kunne ikke skanne Outlook akkurat nå.";
       setMicrosoftImportState("scan_failed");
       setMicrosoftScanId(null);
       setMicrosoftMessage(message);
       setMicrosoftCandidates([]);
-      showToast({ title: "Skanning feilet", message, tone: "error" });
+      showImportToast("outlook-scan-failed", "Skanning feilet", message, "error");
     }
   }
 
@@ -448,6 +471,16 @@ export default function EmailImportPage() {
     setHiddenCandidateKeys([]);
   }
 
+  function showImportToast(key: string, title: string, message: string, tone: "success" | "error" | "info") {
+    const toastKey = `${key}:${message}`;
+    if (lastToastKeyRef.current === toastKey) {
+      return;
+    }
+
+    lastToastKeyRef.current = toastKey;
+    showToast({ title, message, tone });
+  }
+
   async function ignoreCandidate(candidate: EmailSubscriptionCandidate) {
     setHiddenCandidateKeys((currentKeys) => [...currentKeys, getCandidateKey(candidate)]);
     await fetch("/api/import/candidates/ignore", {
@@ -475,164 +508,182 @@ export default function EmailImportPage() {
           </div>
         ) : null}
 
-        <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">E-postimport</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-tight">
-          Finn abonnementer fra kvitteringer
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-          Skann Gmail med read-only tilgang, koble til Outlook med Microsoft, eller lim inn tekst fra en kvittering.
-          Aboslutt lagrer ikke rå e-postinnhold, og ingenting importeres før du bekrefter det.
-        </p>
-
-        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <EmailImportHeader />
+        <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-extrabold tracking-tight">Velg e-postkobling</h2>
-              <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
-                Aboslutt leser bare e-post for å finne mulige abonnementer. Vi sender, endrer eller sletter aldri
-                e-post, og du kan koble fra Microsoft når som helst.
+              <h2 className="text-lg font-extrabold tracking-tight">Koble til e-post</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5F6F82]">
+                Vi leser bare e-post for å finne mulige abonnementer. Vi sender, endrer eller sletter aldri e-post.
               </p>
-              <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold">
-                <Link className="text-[#C8102E] hover:underline" href="/privacy">
-                  Personvern
-                </Link>
-                <Link className="text-[#C8102E] hover:underline" href="/contact">
-                  Support
-                </Link>
-              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:w-[26rem]">
-              <button
-                className="rounded-xl border border-[#DBE4EE] bg-white px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
-                onClick={() => signIn("google", { callbackUrl: "/import/email" })}
-                type="button"
-              >
-                Fortsett med Google
-              </button>
-              {microsoftConnected ? (
-                <div className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
-                  <MicrosoftLogo />
-                  Outlook tilkoblet
-                </div>
-              ) : microsoftConfigured ? (
-                <a
-                  aria-disabled={microsoftImportState === "connecting"}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] aria-disabled:pointer-events-none aria-disabled:opacity-70"
-                  href="/api/import/microsoft/connect"
-                  onClick={connectMicrosoft}
-                >
-                  <MicrosoftLogo />
-                  {microsoftImportState === "connecting" ? "Kobler til Microsoft ..." : "Fortsett med Microsoft"}
-                </a>
-              ) : (
-                <p className="rounded-xl bg-[#F8F1E8] px-5 py-3 text-sm font-bold text-[#8A4B13]">
-                  Outlook er midlertidig utilgjengelig.
-                </p>
-              )}
+            <div className="flex flex-wrap gap-3 text-xs font-semibold">
+              <Link className="text-[#C8102E] hover:underline" href="/privacy">
+                Personvern
+              </Link>
+              <Link className="text-[#C8102E] hover:underline" href="/contact">
+                Support
+              </Link>
             </div>
           </div>
-        </div>
 
-        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-extrabold tracking-tight">Gmail-skanning</h2>
-              <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
-                Skann inntil 100 sannsynlige kvitteringer fra de siste 24 månedene.
-                Kun Gmail read-only brukes.
-              </p>
-              <p className="mt-1 text-xs font-semibold text-[#5F6F82]">
-                {session?.user?.email
-                  ? `Innlogget som ${session.user.email}. Gmail: ${
-                      gmailScopeConnected ? "koblet til" : "ikke koblet til"
-                    }`
-                  : "Logg inn med Google for å bruke Gmail-skanning."}
-              </p>
-              {gmailConnected && !gmailScopeConnected ? (
-                <p className="mt-2 text-xs font-semibold text-[#C8102E]">
-                  Gmail read-only mangler. Koble til Google på nytt.
-                </p>
-              ) : null}
-              {!gmailScanAvailable ? (
-                <div className="mt-4">
-                  <PremiumFeatureGate
-                    benefit="Premium skanner Gmail med read-only tilgang og foreslår abonnementer du kan bekrefte før lagring."
-                    blockedAction="Gmail-skanning starter ikke i gratisplanen."
-                    description="Du kan fortsatt lime inn kvitteringstekst eller legge inn abonnementer manuelt gratis."
-                    title="Gmail-skanning krever Premium"
-                  />
-                </div>
-              ) : null}
-              <p className="mt-3 text-xs font-semibold text-[#C8102E]">
-                Forslag kan inneholde feil. Bekreft alltid kandidaten før den lagres.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:w-44">
-              {!gmailScanAvailable ? (
-                <button
-                  className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white hover:bg-[#a90d27]"
-                  onClick={() =>
-                    setPremiumDialogReason(
-                      "Automatisk Gmail-skanning er en Premium-funksjon. Du kan fortsatt lime inn kvitteringer eller legge inn manuelt gratis.",
-                    )
-                  }
-                  type="button"
-                >
-                  Se Premium
-                </button>
-              ) : !gmailScopeConnected ? (
-                <button
-                  className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
-                  onClick={() => signIn("google", { callbackUrl: "/import/email" })}
-                  type="button"
-                >
-                  Koble til Gmail
-                </button>
-              ) : (
-                <LoadingButton
-                  isLoading={isScanningGmail}
-                  loadingLabel="Skanner..."
-                  onClick={scanGmail}
-                  type="button"
-                >
-                  Skann Gmail
-                </LoadingButton>
-              )}
-            </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <ProviderCard
+              action={
+                gmailScanAvailable && gmailScopeConnected ? (
+                  <LoadingButton isLoading={isScanningGmail} loadingLabel="Skanner..." onClick={scanGmail} type="button">
+                    Skann e-post
+                  </LoadingButton>
+                ) : gmailScanAvailable ? (
+                  <button
+                    className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+                    onClick={() => signIn("google", { callbackUrl: "/import/email" })}
+                    type="button"
+                  >
+                    Koble til Gmail
+                  </button>
+                ) : gmailScopeConnected ? (
+                  <button
+                    className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+                    onClick={() => setPremiumDialogReason("E-postskanning krever Premium.")}
+                    type="button"
+                  >
+                    Se Premium
+                  </button>
+                ) : (
+                  <button
+                    className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+                    onClick={() => signIn("google", { callbackUrl: "/import/email" })}
+                    type="button"
+                  >
+                    Koble til Gmail
+                  </button>
+                )
+              }
+              connectedEmail={gmailScopeConnected ? session?.user?.email ?? null : null}
+              feedback={
+                gmailConnected && !gmailScopeConnected
+                  ? "Koble til Gmail på nytt for å gi lesetilgang."
+                  : scannedMessages !== null
+                    ? `Skannet ${scannedMessages} meldinger.`
+                    : null
+              }
+              imageAlt="Gmail-logo"
+              imageSrc="/gmail.png"
+              name="Gmail"
+              secondaryAction={
+                gmailScopeConnected ? (
+                  <button
+                    className="text-xs font-bold text-[#5F6F82] hover:text-[#C8102E]"
+                    onClick={() => signIn("google", { callbackUrl: "/import/email" })}
+                    type="button"
+                  >
+                    Koble til på nytt
+                  </button>
+                ) : null
+              }
+              status={gmailScopeConnected ? "Tilkoblet" : "Ikke tilkoblet"}
+              statusTone={gmailScopeConnected ? "success" : "neutral"}
+            />
+
+            <ProviderCard
+              action={
+                microsoftConnected && gmailScanAvailable ? (
+                  <LoadingButton isLoading={microsoftImportState === "scanning"} loadingLabel="Skanner..." onClick={scanMicrosoft} type="button">
+                    Skann e-post
+                  </LoadingButton>
+                ) : microsoftConnected ? (
+                  <button
+                    className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+                    onClick={() => setPremiumDialogReason("E-postskanning krever Premium.")}
+                    type="button"
+                  >
+                    Se Premium
+                  </button>
+                ) : microsoftConfigured ? (
+                  <a
+                    aria-disabled={microsoftImportState === "connecting"}
+                    className="inline-flex justify-center rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] aria-disabled:pointer-events-none aria-disabled:opacity-70"
+                    href="/api/import/microsoft/connect"
+                    onClick={connectMicrosoft}
+                  >
+                    {microsoftImportState === "connecting"
+                      ? "Kobler til Microsoft ..."
+                      : microsoftImportState === "expired"
+                        ? "Koble til på nytt"
+                        : "Koble til Outlook"}
+                  </a>
+                ) : (
+                  <p className="rounded-xl bg-[#F8F1E8] px-4 py-3 text-sm font-bold text-[#8A4B13]">
+                    Outlook er midlertidig utilgjengelig.
+                  </p>
+                )
+              }
+              connectedEmail={microsoftConnected ? microsoftEmail : null}
+              feedback={microsoftMessage}
+              imageAlt="Outlook-logo"
+              imageSrc="/outlook.png"
+              name="Outlook"
+              secondaryAction={
+                microsoftConnected ? (
+                  <button
+                    className="text-xs font-bold text-[#5F6F82] hover:text-[#C8102E]"
+                    disabled={microsoftImportState === "scanning"}
+                    onClick={disconnectMicrosoft}
+                    type="button"
+                  >
+                    Koble fra
+                  </button>
+                ) : null
+              }
+              status={
+                microsoftConnected
+                  ? "Tilkoblet"
+                  : microsoftImportState === "expired"
+                    ? "Tilkoblingen har utløpt"
+                    : "Ikke tilkoblet"
+              }
+              statusTone={microsoftConnected ? "success" : microsoftImportState === "expired" ? "warning" : "neutral"}
+            />
           </div>
-          {isScanningGmail ? (
-            <div className="mt-4 rounded-xl bg-[#F0F4F8] p-4 text-sm font-semibold text-[#4A5568]">
-              <p>Henter sannsynlige kvitteringer...</p>
-              <p className="mt-1">Analyserer kandidater...</p>
-            </div>
-          ) : null}
-          {scannedMessages !== null ? (
-            <p className="mt-4 text-sm font-semibold text-[#5F6F82]">
-              Skannet {scannedMessages} meldinger.
+        </section>
+
+        {!gmailScanAvailable ? (
+          <section className="mt-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Premium</p>
+            <h2 className="mt-1 text-lg font-extrabold tracking-tight">E-postskanning krever Premium</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5F6F82]">
+              Med Premium kan du skanne e-posten din og velge hvilke abonnementer du vil importere.
             </p>
-          ) : null}
-        </div>
+            <p className="mt-2 text-sm font-semibold text-[#5F6F82]">
+              Du kan fortsatt legge inn abonnementer manuelt gratis.
+            </p>
+            <button
+              className="mt-4 rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+              onClick={() => setPremiumDialogReason("E-postskanning krever Premium.")}
+              type="button"
+            >
+              Se Premium
+            </button>
+          </section>
+        ) : null}
 
         <MicrosoftImportPanel
-          configured={microsoftConfigured}
-          connected={microsoftConnected}
-          connectedEmail={microsoftEmail}
           key={microsoftScanId ?? microsoftImportState}
           messagesChecked={microsoftMessagesChecked}
-          message={microsoftMessage}
           candidates={microsoftCandidates}
           scanId={microsoftScanId}
-          onConnect={connectMicrosoft}
-          onDisconnect={disconnectMicrosoft}
-          onScan={scanMicrosoft}
-          state={microsoftImportState}
         />
 
         <form
           className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]"
           onSubmit={parseEmail}
         >
-          <label className="text-sm font-semibold text-[#4A5568]" htmlFor="emailText">
+          <h2 className="text-lg font-extrabold tracking-tight">Eller lim inn en kvittering</h2>
+          <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+            Lim inn teksten fra en kvittering eller betalingsbekreftelse.
+          </p>
+          <label className="mt-4 block text-sm font-semibold text-[#4A5568]" htmlFor="emailText">
             E-posttekst
           </label>
           <textarea
@@ -726,33 +777,92 @@ export default function EmailImportPage() {
   );
 }
 
-function MicrosoftImportPanel({
-  configured,
-  connected,
+function EmailImportHeader() {
+  return (
+    <>
+      <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">E-postimport</p>
+      <h1 className="mt-2 text-3xl font-extrabold tracking-tight">
+        Finn abonnementer i e-posten din
+      </h1>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5F6F82]">
+        Koble til e-posten din, så finner vi mulige abonnementer og kvitteringer. Du velger selv hva som skal importeres.
+      </p>
+    </>
+  );
+}
+
+function ProviderCard({
+  name,
+  imageSrc,
+  imageAlt,
+  status,
+  statusTone,
   connectedEmail,
-  state,
-  message,
+  feedback,
+  action,
+  secondaryAction,
+}: {
+  name: string;
+  imageSrc: string;
+  imageAlt: string;
+  status: string;
+  statusTone: "success" | "warning" | "neutral";
+  connectedEmail?: string | null;
+  feedback?: string | null;
+  action: ReactNode;
+  secondaryAction?: ReactNode;
+}) {
+  const statusClass = {
+    success: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    warning: "bg-[#F8F1E8] text-[#8A4B13] ring-amber-200",
+    neutral: "bg-[#F0F4F8] text-[#5F6F82] ring-[#DBE4EE]",
+  }[statusTone];
+
+  return (
+    <article className="flex h-full flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-5">
+      <div className="flex items-start gap-4">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
+          <Image
+            alt={imageAlt}
+            className="h-full w-full object-contain"
+            height={64}
+            src={imageSrc}
+            width={64}
+          />
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-extrabold tracking-tight">{name}</h3>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClass}`}>
+              {status}
+            </span>
+          </div>
+          {connectedEmail ? (
+            <p className="mt-1 truncate text-sm font-semibold text-[#5F6F82]">{connectedEmail}</p>
+          ) : null}
+        </div>
+      </div>
+
+      {feedback ? <p className="mt-4 text-sm font-semibold text-[#5F6F82]">{feedback}</p> : null}
+
+      <div className="mt-auto pt-5">
+        <div className="flex flex-col gap-2">{action}</div>
+        {secondaryAction ? <div className="mt-3">{secondaryAction}</div> : null}
+      </div>
+    </article>
+  );
+}
+
+function MicrosoftImportPanel({
   messagesChecked,
   candidates,
   scanId,
-  onConnect,
-  onScan,
-  onDisconnect,
 }: {
-  configured: boolean;
-  connected: boolean;
-  connectedEmail: string | null;
-  state: MicrosoftImportState;
-  message: string | null;
   messagesChecked: number | null;
   candidates: OutlookCandidate[];
   scanId: string | null;
-  onConnect: (event: MouseEvent<HTMLAnchorElement>) => void;
-  onScan: () => void;
-  onDisconnect: () => void;
 }) {
   const { showToast } = useToast();
-  const content = getMicrosoftStateContent({ configured, connected, state, messagesChecked });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
   const [editingIds, setEditingIds] = useState<string[]>([]);
@@ -861,70 +971,20 @@ function MicrosoftImportPanel({
     }
   }
 
+  if (visibleCandidates.length === 0) {
+    return null;
+  }
+
   return (
     <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className={`text-xs font-bold uppercase tracking-wide ${content.tone}`}>{content.eyebrow}</p>
-          <h2 className="mt-1 text-lg font-extrabold tracking-tight">Outlook-import</h2>
-          <p className="mt-2 text-sm leading-6 text-[#5F6F82]">{content.description}</p>
-          <ul className="mt-3 space-y-1 text-xs font-semibold text-[#5F6F82]">
-            <li>- Aboslutt bruker delegert Microsoft Graph-tilgang til innlogget brukers e-post.</li>
-            <li>- Vi ber bare om lesetilgang til e-post, ikke sending, endring eller sletting.</li>
-            <li>- Ingenting lagres som abonnement før du bekrefter det selv.</li>
-          </ul>
-          {message ? <p className="mt-3 text-sm font-semibold text-[#0D1B2A]">{message}</p> : null}
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:w-56">
-          {!connected ? (
-            configured ? (
-              <a
-                aria-disabled={state === "connecting"}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] aria-disabled:pointer-events-none aria-disabled:opacity-70"
-                href="/api/import/microsoft/connect"
-                onClick={onConnect}
-              >
-                <MicrosoftLogo />
-                {state === "connecting" ? "Kobler til Microsoft ..." : "Fortsett med Microsoft"}
-              </a>
-            ) : (
-              <p className="rounded-xl bg-[#F8F1E8] px-4 py-3 text-sm font-bold text-[#8A4B13]">
-                Outlook er midlertidig utilgjengelig.
-              </p>
-            )
-          ) : (
-            <>
-              <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
-                <span className="inline-flex items-center gap-2">
-                  <MicrosoftLogo />
-                  Outlook tilkoblet
-                </span>
-                {connectedEmail ? (
-                  <span className="mt-1 block truncate text-xs font-semibold text-emerald-800">{connectedEmail}</span>
-                ) : null}
-              </div>
-              <LoadingButton
-                isLoading={state === "scanning"}
-                loadingLabel="Skanner..."
-                onClick={onScan}
-                type="button"
-              >
-                Skann e-post
-              </LoadingButton>
-              <button
-                className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
-                disabled={state === "connecting" || state === "scanning"}
-                onClick={onDisconnect}
-                type="button"
-              >
-                Koble fra
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {visibleCandidates.length > 0 ? (
-        <div className="mt-5 grid gap-3">
+      <div className="grid gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Outlook-forslag</p>
+            <h2 className="mt-1 text-lg font-extrabold tracking-tight">Se gjennom funn før import</h2>
+            <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+              Velg forslagene du vil importere, og rediger navn, pris eller intervall før de lagres.
+            </p>
+          </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-bold text-[#0D1B2A]">
               {messagesChecked ?? 0} meldinger skannet · {visibleCandidates.length} mulige funn
@@ -1074,92 +1134,9 @@ function MicrosoftImportPanel({
           <p className="text-xs font-semibold text-[#5F6F82]">
             Ingenting importeres før du velger forslag og trykker Importer valgte.
           </p>
-        </div>
-      ) : null}
+      </div>
     </section>
   );
-}
-
-function getMicrosoftStateContent({
-  configured,
-  connected,
-  state,
-  messagesChecked,
-}: {
-  configured: boolean;
-  connected: boolean;
-  state: MicrosoftImportState;
-  messagesChecked: number | null;
-}) {
-  if (connected || state === "connected") {
-    return {
-      eyebrow: "Outlook tilkoblet",
-      description: "Du kan skanne e-post og velge hvilke forslag som skal importeres.",
-      tone: "text-emerald-700",
-    };
-  }
-
-  if (!configured) {
-    return {
-      eyebrow: "Ikke konfigurert",
-      description: "Outlook er midlertidig utilgjengelig.",
-      tone: "text-[#8A4B13]",
-    };
-  }
-
-  if (state === "connecting") {
-    return {
-      eyebrow: "Kobler til",
-      description: "Du sendes til Microsoft for å godkjenne lesetilgang til Outlook.",
-      tone: "text-[#C8102E]",
-    };
-  }
-
-  if (state === "scanning") {
-    return {
-      eyebrow: "Skanner",
-      description: "Vi leser nylige Outlook-meldinger og finner mulige abonnementer du kan vurdere.",
-      tone: "text-[#C8102E]",
-    };
-  }
-
-  if (state === "scan_failed") {
-    return {
-      eyebrow: "Feilet",
-      description: "Outlook kunne ikke skannes akkurat nå. Prøv igjen eller koble til på nytt.",
-      tone: "text-[#C8102E]",
-    };
-  }
-
-  if (state === "no_candidates") {
-    return {
-      eyebrow: "Ingen sikre funn",
-      description: "Skanningen ble fullført, men reglene fant ingen tydelige abonnementer.",
-      tone: "text-[#5F6F82]",
-    };
-  }
-
-  if (state === "review_results") {
-    return {
-      eyebrow: "Klar til gjennomgang",
-      description: `${messagesChecked ?? 0} meldinger ble skannet. Velg og rediger forslagene du vil importere.`,
-      tone: "text-emerald-700",
-    };
-  }
-
-  if (state === "disconnected") {
-    return {
-      eyebrow: "Frakoblet",
-      description: "Microsoft er koblet fra. Du kan koble til igjen når du vil.",
-      tone: "text-[#5F6F82]",
-    };
-  }
-
-  return {
-    eyebrow: "Ikke tilkoblet",
-    description: "Koble til Microsoft for å forberede Outlook-import. Dette starter ikke automatisk skanning.",
-    tone: "text-[#5F6F82]",
-  };
 }
 
 function getMicrosoftConnectionMessage(code: string) {
@@ -1168,7 +1145,7 @@ function getMicrosoftConnectionMessage(code: string) {
   }
 
   if (code === "expired" || code === "MICROSOFT_RECONNECT_REQUIRED") {
-    return "Tilkoblingen til Outlook har utløpt. Koble til på nytt.";
+    return "Tilkoblingen til Outlook har utløpt.";
   }
 
   if (code === "unavailable" || code === "MICROSOFT_NOT_CONFIGURED") {
@@ -1176,17 +1153,6 @@ function getMicrosoftConnectionMessage(code: string) {
   }
 
   return "Vi klarte ikke å koble til Outlook. Prøv igjen.";
-}
-
-function MicrosoftLogo() {
-  return (
-    <span aria-hidden="true" className="grid h-4 w-4 grid-cols-2 gap-0.5">
-      <span className="bg-[#F25022]" />
-      <span className="bg-[#7FBA00]" />
-      <span className="bg-[#00A4EF]" />
-      <span className="bg-[#FFB900]" />
-    </span>
-  );
 }
 
 function getOutlookConfidenceLabel(confidence: OutlookCandidate["confidence"]) {

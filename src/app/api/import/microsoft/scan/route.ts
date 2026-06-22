@@ -3,6 +3,7 @@ import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
 import {
   getMicrosoftProviderName,
   getValidMicrosoftAccessToken,
+  invalidateMicrosoftAccount,
   MicrosoftGraphError,
   readSignedInMicrosoftMailbox,
 } from "@/lib/microsoft-graph";
@@ -19,7 +20,15 @@ export async function POST(request: Request) {
   });
 
   if (rateLimitResponse) {
-    return rateLimitResponse;
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "scan_failed",
+        error: "SCAN_RATE_LIMITED",
+        message: "Microsoft bruker litt lengre tid akkurat nå. Prøv igjen om et øyeblikk.",
+      },
+      { status: 429 },
+    );
   }
 
   const currentUser = await getCurrentUser();
@@ -42,8 +51,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "MICROSOFT_NOT_CONNECTED",
-        message: "Koble til Microsoft før du skanner Outlook.",
+        status: "scan_failed",
+        error: "RECONNECT_REQUIRED",
+        message: "Tilkoblingen til Outlook har utløpt.",
       },
       { status: 403 },
     );
@@ -78,15 +88,19 @@ export async function POST(request: Request) {
           ? `${candidates.length} mulige abonnementer er klare for gjennomgang.`
           : scanResult.partial
             ? "Skanningen ble delvis fullført, men vi fant ingen sikre abonnementer."
-            : "Fant ingen sikre abonnementer i Outlook denne gangen.",
+            : "Vi fant ingen sikre abonnementer i denne skanningen.",
     });
   } catch (error) {
+    if (error instanceof MicrosoftGraphError && error.code === "MICROSOFT_RECONNECT_REQUIRED") {
+      await invalidateMicrosoftAccount(currentUser.id);
+    }
+
     const status = error instanceof MicrosoftGraphError ? error.status : 500;
     return NextResponse.json(
       {
         ok: false,
         status: "scan_failed",
-        error: error instanceof MicrosoftGraphError ? error.code : "MICROSOFT_SCAN_FAILED",
+        error: getMicrosoftScanErrorCode(error),
         message: getSafeMicrosoftScanMessage(error),
       },
       { status },
@@ -97,15 +111,31 @@ export async function POST(request: Request) {
 function getSafeMicrosoftScanMessage(error: unknown) {
   if (error instanceof MicrosoftGraphError) {
     if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
-      return "Tilkoblingen til Outlook har utløpt. Koble til på nytt.";
+      return "Tilkoblingen til Outlook har utløpt.";
     }
 
     if (error.code === "MICROSOFT_THROTTLED") {
-      return "Microsoft begrenset skanningen midlertidig. Prøv igjen om litt.";
+      return "Microsoft bruker litt lengre tid akkurat nå. Prøv igjen om et øyeblikk.";
     }
 
-    return error.message;
+    return "Vi klarte ikke å skanne e-posten. Prøv igjen.";
   }
 
-  return "Kunne ikke skanne Outlook akkurat nå.";
+  return "Vi klarte ikke å skanne e-posten. Prøv igjen.";
+}
+
+function getMicrosoftScanErrorCode(error: unknown) {
+  if (!(error instanceof MicrosoftGraphError)) {
+    return "SCAN_FAILED";
+  }
+
+  if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
+    return "CONNECTION_EXPIRED";
+  }
+
+  if (error.code === "MICROSOFT_THROTTLED") {
+    return "MICROSOFT_THROTTLED";
+  }
+
+  return "SCAN_FAILED";
 }

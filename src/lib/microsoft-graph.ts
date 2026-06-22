@@ -198,6 +198,21 @@ export async function getValidMicrosoftAccessToken(account: {
   return refreshMicrosoftAccessToken(account);
 }
 
+export async function validateMicrosoftConnection(account: {
+  id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  expires_at: number | null;
+}) {
+  const accessToken = await getValidMicrosoftAccessToken(account);
+  const profile = await getMicrosoftProfile(accessToken);
+
+  return {
+    email: profile.mail ?? profile.userPrincipalName ?? null,
+    name: profile.displayName ?? null,
+  };
+}
+
 export async function refreshMicrosoftAccessToken(account: {
   id: string;
   access_token: string | null;
@@ -361,6 +376,10 @@ export async function disconnectMicrosoftAccount(userId: string) {
   await prisma.account.deleteMany({
     where: { userId, provider },
   });
+}
+
+export async function invalidateMicrosoftAccount(userId: string) {
+  await disconnectMicrosoftAccount(userId);
 }
 
 export function getMicrosoftProviderName() {
