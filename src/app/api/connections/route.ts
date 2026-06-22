@@ -29,6 +29,7 @@ export async function GET() {
     microsoftConnected: Boolean(microsoftAccount),
     microsoftMailScopeConnected: Boolean(microsoftAccount?.scope?.split(" ").includes("Mail.Read")),
     microsoftConfigured: isMicrosoftGraphConfigured(),
+    microsoftEmail: microsoftAccount ? currentUser.email : null,
     plan: currentUser.plan,
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from "react";
+import { Dispatch, FormEvent, MouseEvent, SetStateAction, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
@@ -98,6 +98,7 @@ export default function EmailImportPage() {
   const [gmailScanAvailable, setGmailScanAvailable] = useState(true);
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
+  const [microsoftEmail, setMicrosoftEmail] = useState<string | null>(null);
   const [microsoftImportState, setMicrosoftImportState] = useState<MicrosoftImportState>("not_connected");
   const [microsoftMessage, setMicrosoftMessage] = useState<string | null>(null);
   const [microsoftMessagesChecked, setMicrosoftMessagesChecked] = useState<number | null>(null);
@@ -131,35 +132,31 @@ export default function EmailImportPage() {
         gmailScanAvailable?: boolean;
         microsoftConnected?: boolean;
         microsoftConfigured?: boolean;
+        microsoftEmail?: string | null;
       };
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
       setMicrosoftConnected(Boolean(result.microsoftConnected));
       setMicrosoftConfigured(Boolean(result.microsoftConfigured));
+      setMicrosoftEmail(result.microsoftEmail ?? null);
       const microsoft = searchParams.get("microsoft");
 
       if (microsoft === "connected") {
         setMicrosoftConnected(true);
         setMicrosoftImportState("connected");
-        setMicrosoftMessage("Microsoft er koblet til. Du kan starte en manuell skann når du er klar.");
+        setMicrosoftMessage("Outlook tilkoblet. Du kan skanne e-post når du er klar.");
         showToast({
-          title: "Microsoft er koblet til",
+          title: "Outlook tilkoblet",
           message: "Outlook-tilgangen er klar.",
           tone: "success",
         });
         return;
       }
 
-      if (microsoft === "cancelled") {
-        setMicrosoftImportState("not_connected");
-        setMicrosoftMessage("Microsoft-koblingen ble avbrutt. Ingen e-post ble lest.");
-        return;
-      }
-
       if (microsoft) {
-        setMicrosoftImportState("scan_failed");
-        setMicrosoftMessage("Microsoft-koblingen kunne ikke fullføres. Prøv igjen.");
+        setMicrosoftImportState(microsoft === "expired" || microsoft === "cancelled" ? "not_connected" : "scan_failed");
+        setMicrosoftMessage(getMicrosoftConnectionMessage(microsoft));
         return;
       }
 
@@ -254,10 +251,14 @@ export default function EmailImportPage() {
     }
   }
 
-  function connectMicrosoft() {
+  function connectMicrosoft(event: MouseEvent<HTMLAnchorElement>) {
+    if (microsoftImportState === "connecting") {
+      event.preventDefault();
+      return;
+    }
+
     setMicrosoftImportState("connecting");
-    setMicrosoftMessage("Sender deg til Microsoft for sikker godkjenning.");
-    window.location.href = "/api/import/microsoft/connect";
+    setMicrosoftMessage("Kobler til Microsoft ...");
   }
 
   async function scanMicrosoft() {
@@ -273,11 +274,12 @@ export default function EmailImportPage() {
         messagesChecked?: number;
         candidates?: OutlookCandidate[];
         message?: string;
+        error?: string;
         partial?: boolean;
       };
 
       if (!response.ok) {
-        throw new Error(result.message ?? "Kunne ikke skanne Outlook akkurat nå.");
+        throw new Error(result.message ?? getMicrosoftConnectionMessage(result.error ?? "failed"));
       }
 
       const candidates = Array.isArray(result.candidates) ? result.candidates : [];
@@ -294,8 +296,8 @@ export default function EmailImportPage() {
             : "Vi fant ingen sikre abonnementer denne gangen.",
         tone: candidates.length > 0 ? "success" : "info",
       });
-    } catch {
-      const message = "Kunne ikke skanne Outlook akkurat nå.";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Kunne ikke skanne Outlook akkurat nå.";
       setMicrosoftImportState("scan_failed");
       setMicrosoftScanId(null);
       setMicrosoftMessage(message);
@@ -317,7 +319,7 @@ export default function EmailImportPage() {
       setMicrosoftConnected(false);
       setMicrosoftImportState("disconnected");
       setMicrosoftScanId(null);
-      setMicrosoftMessage("Microsoft er koblet fra. Lagrede Microsoft-token er fjernet.");
+      setMicrosoftMessage("Microsoft er koblet fra. Outlook-tilgangen er fjernet.");
       setMicrosoftCandidates([]);
       showToast({
         title: "Microsoft er koblet fra",
@@ -507,21 +509,28 @@ export default function EmailImportPage() {
               >
                 Fortsett med Google
               </button>
-              <button
-                className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!microsoftConfigured || microsoftImportState === "connecting"}
-                onClick={connectMicrosoft}
-                type="button"
-              >
-                {microsoftImportState === "connecting" ? "Kobler til..." : "Fortsett med Microsoft"}
-              </button>
+              {microsoftConnected ? (
+                <div className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
+                  <MicrosoftLogo />
+                  Outlook tilkoblet
+                </div>
+              ) : microsoftConfigured ? (
+                <a
+                  aria-disabled={microsoftImportState === "connecting"}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] aria-disabled:pointer-events-none aria-disabled:opacity-70"
+                  href="/api/import/microsoft/connect"
+                  onClick={connectMicrosoft}
+                >
+                  <MicrosoftLogo />
+                  {microsoftImportState === "connecting" ? "Kobler til Microsoft ..." : "Fortsett med Microsoft"}
+                </a>
+              ) : (
+                <p className="rounded-xl bg-[#F8F1E8] px-5 py-3 text-sm font-bold text-[#8A4B13]">
+                  Outlook er midlertidig utilgjengelig.
+                </p>
+              )}
             </div>
           </div>
-          {!microsoftConfigured ? (
-            <p className="mt-3 text-xs font-semibold text-[#8A4B13]">
-              Microsoft-import er ikke ferdig konfigurert ennå.
-            </p>
-          ) : null}
         </div>
 
         <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
@@ -607,6 +616,7 @@ export default function EmailImportPage() {
         <MicrosoftImportPanel
           configured={microsoftConfigured}
           connected={microsoftConnected}
+          connectedEmail={microsoftEmail}
           key={microsoftScanId ?? microsoftImportState}
           messagesChecked={microsoftMessagesChecked}
           message={microsoftMessage}
@@ -719,6 +729,7 @@ export default function EmailImportPage() {
 function MicrosoftImportPanel({
   configured,
   connected,
+  connectedEmail,
   state,
   message,
   messagesChecked,
@@ -730,12 +741,13 @@ function MicrosoftImportPanel({
 }: {
   configured: boolean;
   connected: boolean;
+  connectedEmail: string | null;
   state: MicrosoftImportState;
   message: string | null;
   messagesChecked: number | null;
   candidates: OutlookCandidate[];
   scanId: string | null;
-  onConnect: () => void;
+  onConnect: (event: MouseEvent<HTMLAnchorElement>) => void;
   onScan: () => void;
   onDisconnect: () => void;
 }) {
@@ -863,25 +875,41 @@ function MicrosoftImportPanel({
           </ul>
           {message ? <p className="mt-3 text-sm font-semibold text-[#0D1B2A]">{message}</p> : null}
         </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:w-48">
+        <div className="flex shrink-0 flex-col gap-2 sm:w-56">
           {!connected ? (
-            <button
-              className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!configured || state === "connecting"}
-              onClick={onConnect}
-              type="button"
-            >
-              {state === "connecting" ? "Kobler til..." : "Fortsett med Microsoft"}
-            </button>
+            configured ? (
+              <a
+                aria-disabled={state === "connecting"}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#15283c] aria-disabled:pointer-events-none aria-disabled:opacity-70"
+                href="/api/import/microsoft/connect"
+                onClick={onConnect}
+              >
+                <MicrosoftLogo />
+                {state === "connecting" ? "Kobler til Microsoft ..." : "Fortsett med Microsoft"}
+              </a>
+            ) : (
+              <p className="rounded-xl bg-[#F8F1E8] px-4 py-3 text-sm font-bold text-[#8A4B13]">
+                Outlook er midlertidig utilgjengelig.
+              </p>
+            )
           ) : (
             <>
+              <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
+                <span className="inline-flex items-center gap-2">
+                  <MicrosoftLogo />
+                  Outlook tilkoblet
+                </span>
+                {connectedEmail ? (
+                  <span className="mt-1 block truncate text-xs font-semibold text-emerald-800">{connectedEmail}</span>
+                ) : null}
+              </div>
               <LoadingButton
                 isLoading={state === "scanning"}
                 loadingLabel="Skanner..."
                 onClick={onScan}
                 type="button"
               >
-                Skann Outlook
+                Skann e-post
               </LoadingButton>
               <button
                 className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
@@ -1063,10 +1091,18 @@ function getMicrosoftStateContent({
   state: MicrosoftImportState;
   messagesChecked: number | null;
 }) {
+  if (connected || state === "connected") {
+    return {
+      eyebrow: "Outlook tilkoblet",
+      description: "Du kan skanne e-post og velge hvilke forslag som skal importeres.",
+      tone: "text-emerald-700",
+    };
+  }
+
   if (!configured) {
     return {
       eyebrow: "Ikke konfigurert",
-      description: "Microsoft-import er klar i grensesnittet, men mangler serverkonfigurasjon.",
+      description: "Outlook er midlertidig utilgjengelig.",
       tone: "text-[#8A4B13]",
     };
   }
@@ -1119,19 +1155,38 @@ function getMicrosoftStateContent({
     };
   }
 
-  if (connected || state === "connected") {
-    return {
-      eyebrow: "Tilkoblet",
-      description: "Microsoft er koblet til. Du kan starte en manuell testskann når du er klar.",
-      tone: "text-emerald-700",
-    };
-  }
-
   return {
     eyebrow: "Ikke tilkoblet",
     description: "Koble til Microsoft for å forberede Outlook-import. Dette starter ikke automatisk skanning.",
     tone: "text-[#5F6F82]",
   };
+}
+
+function getMicrosoftConnectionMessage(code: string) {
+  if (code === "cancelled") {
+    return "Tilkoblingen ble avbrutt. Ingen tilgang ble gitt.";
+  }
+
+  if (code === "expired" || code === "MICROSOFT_RECONNECT_REQUIRED") {
+    return "Tilkoblingen til Outlook har utløpt. Koble til på nytt.";
+  }
+
+  if (code === "unavailable" || code === "MICROSOFT_NOT_CONFIGURED") {
+    return "Outlook er midlertidig utilgjengelig.";
+  }
+
+  return "Vi klarte ikke å koble til Outlook. Prøv igjen.";
+}
+
+function MicrosoftLogo() {
+  return (
+    <span aria-hidden="true" className="grid h-4 w-4 grid-cols-2 gap-0.5">
+      <span className="bg-[#F25022]" />
+      <span className="bg-[#7FBA00]" />
+      <span className="bg-[#00A4EF]" />
+      <span className="bg-[#FFB900]" />
+    </span>
+  );
 }
 
 function getOutlookConfidenceLabel(confidence: OutlookCandidate["confidence"]) {

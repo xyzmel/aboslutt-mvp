@@ -75,7 +75,19 @@ export type MicrosoftMailboxScanResult = {
 };
 
 export function isMicrosoftGraphConfigured() {
-  return Boolean(process.env.MICROSOFT_CLIENT_ID?.trim() && process.env.MICROSOFT_CLIENT_SECRET?.trim());
+  return getMissingMicrosoftConfig().length === 0;
+}
+
+export function getMissingMicrosoftConfig() {
+  const required = [
+    "MICROSOFT_CLIENT_ID",
+    "MICROSOFT_CLIENT_SECRET",
+    "MICROSOFT_TENANT_ID",
+    "MICROSOFT_REDIRECT_URI",
+    "MICROSOFT_TOKEN_ENCRYPTION_KEY",
+  ] as const;
+
+  return required.filter((name) => !process.env[name]?.trim());
 }
 
 export async function createMicrosoftAuthorizationUrl(userId: string) {
@@ -464,7 +476,7 @@ function decryptToken(value: string) {
 }
 
 function getEncryptionKey() {
-  const secret = process.env.MICROSOFT_TOKEN_ENCRYPTION_KEY?.trim() || process.env.NEXTAUTH_SECRET?.trim();
+  const secret = process.env.MICROSOFT_TOKEN_ENCRYPTION_KEY?.trim();
 
   if (!secret) {
     throw new MicrosoftGraphError(
@@ -478,7 +490,7 @@ function getEncryptionKey() {
 }
 
 function getStateSecret() {
-  const secret = process.env.NEXTAUTH_SECRET?.trim() || process.env.MICROSOFT_TOKEN_ENCRYPTION_KEY?.trim();
+  const secret = process.env.MICROSOFT_TOKEN_ENCRYPTION_KEY?.trim();
 
   if (!secret) {
     throw new MicrosoftGraphError(
@@ -492,22 +504,29 @@ function getStateSecret() {
 }
 
 function getMicrosoftConfig() {
-  const clientId = process.env.MICROSOFT_CLIENT_ID?.trim();
-  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET?.trim();
-
-  if (!clientId || !clientSecret) {
+  const missing = getMissingMicrosoftConfig();
+  if (missing.length > 0) {
     throw new MicrosoftGraphError(
       "MICROSOFT_NOT_CONFIGURED",
-      "Microsoft-import er ikke ferdig konfigurert.",
+      "Outlook er midlertidig utilgjengelig.",
       503,
     );
   }
 
-  const tenantId = process.env.MICROSOFT_TENANT_ID?.trim() || "common";
+  const clientId = process.env.MICROSOFT_CLIENT_ID?.trim();
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET?.trim();
+  const tenantId = process.env.MICROSOFT_TENANT_ID?.trim();
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI?.trim();
+
+  if (!clientId || !clientSecret || !tenantId || !redirectUri) {
+    throw new MicrosoftGraphError(
+      "MICROSOFT_NOT_CONFIGURED",
+      "Outlook er midlertidig utilgjengelig.",
+      503,
+    );
+  }
+
   const authority = `https://login.microsoftonline.com/${tenantId}`;
-  const redirectUri =
-    process.env.MICROSOFT_REDIRECT_URI?.trim() ||
-    `${getSiteUrl()}/api/import/microsoft/callback`;
 
   return {
     clientId,
@@ -515,18 +534,4 @@ function getMicrosoftConfig() {
     authority,
     redirectUri,
   };
-}
-
-function getSiteUrl() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.NEXTAUTH_URL?.trim();
-
-  if (!siteUrl) {
-    throw new MicrosoftGraphError(
-      "MICROSOFT_NOT_CONFIGURED",
-      "Microsoft-import mangler offentlig nettadresse.",
-      503,
-    );
-  }
-
-  return siteUrl.replace(/\/+$/, "");
 }

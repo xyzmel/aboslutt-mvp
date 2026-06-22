@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 function getSafeMicrosoftScanMessage(error: unknown) {
   if (error instanceof MicrosoftGraphError) {
     if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
-      return "Microsoft-tilgangen er utløpt eller trukket tilbake. Koble til Outlook på nytt.";
+      return "Tilkoblingen til Outlook har utløpt. Koble til på nytt.";
     }
 
     if (error.code === "MICROSOFT_THROTTLED") {

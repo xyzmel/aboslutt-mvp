@@ -31,15 +31,28 @@ export async function GET(request: Request) {
     return NextResponse.redirect(redirectUrl);
   } catch (callbackError) {
     logger.error("[microsoft:callback]", {
-      error: callbackError instanceof MicrosoftGraphError ? callbackError.code : callbackError,
+      error: callbackError instanceof MicrosoftGraphError ? callbackError.code : "MICROSOFT_CONNECT_FAILED",
       userId: currentUser.id,
     });
-    redirectUrl.searchParams.set(
-      "microsoft",
-      callbackError instanceof MicrosoftGraphError ? callbackError.code : "MICROSOFT_CONNECT_FAILED",
-    );
+    redirectUrl.searchParams.set("microsoft", mapMicrosoftCallbackError(callbackError));
     return NextResponse.redirect(redirectUrl);
   }
+}
+
+function mapMicrosoftCallbackError(error: unknown) {
+  if (!(error instanceof MicrosoftGraphError)) {
+    return "failed";
+  }
+
+  if (error.code === "MICROSOFT_NOT_CONFIGURED") {
+    return "unavailable";
+  }
+
+  if (error.code === "MICROSOFT_RECONNECT_REQUIRED") {
+    return "expired";
+  }
+
+  return "failed";
 }
 
 function getBaseUrl() {
