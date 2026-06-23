@@ -742,25 +742,6 @@ export function DashboardClient() {
               />
             ) : null}
 
-            <div id="cancellations">
-              {activeCancellations.length > 0 ? (
-                <CancellationFollowUpSection
-                  onAction={updateCancellationRequest}
-                  subscriptions={activeCancellations}
-                />
-              ) : (
-                <DashboardEmptyState
-                  actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
-                  actionLabel="Start en oppsigelse"
-                  compact
-                  description="Oppsigelser du starter, vises her med status og neste steg."
-                  eyebrow="AKTIVE OPPSIGELSER"
-                  title="Ingen aktive oppsigelser"
-                />
-              )}
-
-              <CompletedCancellationsSection subscriptions={completedCancellations} />
-            </div>
               </>
             ) : null}
 
@@ -859,6 +840,28 @@ export function DashboardClient() {
                 trialCount={trialCount}
               />
             </div>
+
+            {!isFirstTimeUser ? (
+              <div className="mt-6" id="cancellations">
+                {activeCancellations.length > 0 ? (
+                  <CancellationFollowUpSection
+                    onAction={updateCancellationRequest}
+                    subscriptions={activeCancellations}
+                  />
+                ) : (
+                  <DashboardEmptyState
+                    actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
+                    actionLabel="Start en oppsigelse"
+                    compact
+                    description="Oppsigelser du starter, vises her med status og neste steg."
+                    eyebrow="AKTIVE OPPSIGELSER"
+                    title="Ingen aktive oppsigelser"
+                  />
+                )}
+
+                <CompletedCancellationsSection subscriptions={completedCancellations} />
+              </div>
+            ) : null}
 
             <div className="mt-6">
               <NotificationsEmptyState
@@ -1100,14 +1103,16 @@ function SubscriptionsEmptyState({
 function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subscription[] }) {
   if (subscriptions.length === 0) {
     return (
-      <DashboardEmptyState
-        actionHref="#subscriptions"
-        actionLabel="Se abonnementer"
-        compact
+      <div className="mt-4">
+        <DashboardEmptyState
+          actionHref="#subscriptions"
+          actionLabel="Se abonnementer"
+          compact
         description="Fullførte oppsigelser og dokumentasjon samles her."
-        eyebrow="HISTORIKK"
+          eyebrow="HISTORIKK"
         title="Ingen fullførte oppsigelser ennå"
-      />
+        />
+      </div>
     );
   }
 
@@ -1126,14 +1131,30 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
         </span>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {subscriptions.slice(0, 4).map((subscription) => (
-          <div className="rounded-xl bg-[#F7F9FC] p-4 ring-1 ring-[#E6EDF5]" key={subscription.id}>
-            <p className="font-extrabold text-[#0D1B2A]">{subscription.name}</p>
-            <p className="mt-1 text-sm text-[#5F6F82]">
-              {getCancellationStatusLabel(subscription.cancellationRequest?.status) ?? "Avsluttet"}
-            </p>
-          </div>
-        ))}
+        {subscriptions.slice(0, 4).map((subscription) => {
+          const request = subscription.cancellationRequest;
+          const completedAt = request?.updatedAt ? new Date(request.updatedAt) : request?.sentAt ? new Date(request.sentAt) : null;
+
+          return (
+            <div className="rounded-xl bg-[#F7F9FC] p-4 ring-1 ring-[#E6EDF5]" key={subscription.id}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate font-extrabold text-[#0D1B2A]">{subscription.name}</p>
+                  <p className="mt-1 text-sm text-[#5F6F82]">
+                    {getCancellationStatusLabel(request?.status) ?? "Avsluttet"}
+                    {completedAt ? ` - ${formatDateForShortDisplay(completedAt)}` : ""}
+                  </p>
+                </div>
+                <Link
+                  className="shrink-0 text-sm font-bold text-[#C8102E] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  href={`/subscriptions/${subscription.id}/cancel`}
+                >
+                  Se dokumentasjon
+                </Link>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -1196,14 +1217,14 @@ function DashboardEmptyState({
 }) {
   if (compact) {
     return (
-      <section className="mt-4 rounded-2xl border border-dashed border-[#C8D4E2] bg-white px-4 py-4 text-sm text-[#5F6F82] shadow-sm sm:flex sm:min-h-[118px] sm:items-center sm:justify-between sm:gap-5 sm:px-5">
+      <section className="rounded-2xl border border-dashed border-[#C8D4E2] bg-white px-4 py-3.5 text-sm text-[#5F6F82] shadow-sm sm:flex sm:min-h-[112px] sm:items-center sm:justify-between sm:gap-5 sm:px-5">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>
           <h2 className="mt-1 text-lg font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
           <p className="mt-1 max-w-2xl leading-6">{description}</p>
         </div>
         {actionHref && actionLabel ? (
-          <div className="mt-4 shrink-0 sm:mt-0">
+          <div className="mt-3 shrink-0 sm:mt-0 sm:text-right">
             <a
               className="inline-flex w-full justify-center rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 sm:w-auto"
               href={actionHref}
@@ -1314,7 +1335,7 @@ function CancellationFollowUpSection({
   ) => void;
 }) {
   return (
-    <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Aktive oppsigelser</p>
