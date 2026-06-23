@@ -9,11 +9,10 @@ const sentryWebpackPluginOptions = {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: true,
+  silent: !process.env.CI,
   widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
   hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: false,
 };
 
 export default withSentryConfig(nextConfig, sentryWebpackPluginOptions);
