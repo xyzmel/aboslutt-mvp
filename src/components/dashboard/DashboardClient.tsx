@@ -11,6 +11,7 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
 import { PlanStatusCard } from "@/components/plans/PlanStatusCard";
+import { AuthPageHeader } from "@/components/ui/AuthPageHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { SkeletonBlock } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -611,41 +612,35 @@ export function DashboardClient() {
 
         {step === "overview" ? (
           <>
-            <div className="rounded-3xl border border-[#DBE4EE] bg-white/82 p-4 shadow-sm shadow-slate-200/70 sm:p-5 lg:flex lg:items-end lg:justify-between lg:gap-6">
-              <div>
-                <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">
-                  Oversikt
-                </p>
-                <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
-                  Abonnementene dine
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-                  Se faste kostnader, kommende trekk og abonnementer du vurderer å avslutte.
-                </p>
-              </div>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row lg:mt-0">
+            <AuthPageHeader
+              actions={
+                <>
                 <a
-                  className="rounded-xl bg-[#C8102E] px-4 py-3 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/20 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#C8102E] px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm shadow-[#C8102E]/15 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
                   href="#manual-add"
                 >
                   Legg til abonnement
                 </a>
                 <Link
-                  className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-center text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] bg-white px-4 py-2.5 text-center text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
                   href="/import/email"
                   onClick={explainPremiumFeature}
                 >
                   Importer fra e-post
                 </Link>
                 <button
-                  className="rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#F7F9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] bg-white px-4 py-2.5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
                   onClick={toggleSelectAll}
                   type="button"
                 >
                   Velg alle synlige
                 </button>
-              </div>
-            </div>
+                </>
+              }
+              description="Se faste kostnader, kommende trekk og abonnementer du vurderer å avslutte."
+              eyebrow="Oversikt"
+              title="Abonnementene dine"
+            />
 
             {isFirstTimeUser ? (
               <div className="mt-5">
@@ -841,28 +836,6 @@ export function DashboardClient() {
               />
             </div>
 
-            {!isFirstTimeUser ? (
-              <div className="mt-6" id="cancellations">
-                {activeCancellations.length > 0 ? (
-                  <CancellationFollowUpSection
-                    onAction={updateCancellationRequest}
-                    subscriptions={activeCancellations}
-                  />
-                ) : (
-                  <DashboardEmptyState
-                    actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
-                    actionLabel="Start en oppsigelse"
-                    compact
-                    description="Oppsigelser du starter, vises her med status og neste steg."
-                    eyebrow="AKTIVE OPPSIGELSER"
-                    title="Ingen aktive oppsigelser"
-                  />
-                )}
-
-                <CompletedCancellationsSection subscriptions={completedCancellations} />
-              </div>
-            ) : null}
-
             <div className="mt-6">
               <NotificationsEmptyState
                 emailRemindersEnabled={emailRemindersEnabled}
@@ -896,6 +869,28 @@ export function DashboardClient() {
                 plan={currentPlan}
               />
             </div>
+
+            {!isFirstTimeUser ? (
+              <div className="mt-6" id="cancellations">
+                {activeCancellations.length > 0 ? (
+                  <CancellationFollowUpSection
+                    onAction={updateCancellationRequest}
+                    subscriptions={activeCancellations}
+                  />
+                ) : (
+                  <DashboardEmptyState
+                    actionHref={hasSubscriptions ? "#subscriptions" : "#manual-add"}
+                    actionLabel="Start en oppsigelse"
+                    compact
+                    description="Oppsigelser du starter, vises her med status og neste steg."
+                    eyebrow="AKTIVE OPPSIGELSER"
+                    title="Ingen aktive oppsigelser"
+                  />
+                )}
+
+                <CompletedCancellationsSection subscriptions={completedCancellations} />
+              </div>
+            ) : null}
           </>
         ) : null}
       </section>
@@ -962,12 +957,12 @@ function SummaryCard({
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE]">
-      <div className={`absolute inset-x-0 top-0 h-1 ${accentClasses[accent]}`} />
+      <div className={`absolute left-0 top-0 h-full w-1 ${accentClasses[accent]}`} />
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-bold uppercase tracking-wide text-[#5F6F82]">{label}</p>
-        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${accentClasses[accent]}`} aria-hidden="true" />
+        <span className={`mt-1 h-2 w-2 rounded-full ${accentClasses[accent]}`} aria-hidden="true" />
       </div>
-      <p className="mt-2 text-2xl font-black tracking-tight text-[#0D1B2A] sm:text-3xl">{value}</p>
+      <p className="mt-2 text-2xl font-extrabold tracking-tight text-[#0D1B2A] sm:text-3xl">{value}</p>
       <p className="mt-1 text-xs font-semibold leading-5 text-[#5F6F82]">{helper}</p>
     </div>
   );
@@ -981,7 +976,7 @@ function FirstTimeOnboarding({
   onImportClick: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
         <div className="bg-[#0D1B2A] p-5 text-white sm:p-6">
           <p className="text-sm font-bold uppercase tracking-wide text-white/60">Kom i gang</p>
@@ -1217,7 +1212,7 @@ function DashboardEmptyState({
 }) {
   if (compact) {
     return (
-      <section className="rounded-2xl border border-dashed border-[#C8D4E2] bg-white px-4 py-3.5 text-sm text-[#5F6F82] shadow-sm sm:flex sm:min-h-[112px] sm:items-center sm:justify-between sm:gap-5 sm:px-5">
+      <section className="rounded-2xl border border-[#DBE4EE] bg-white px-4 py-3.5 text-sm text-[#5F6F82] shadow-sm sm:flex sm:min-h-[112px] sm:items-center sm:justify-between sm:gap-5 sm:px-5">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>
           <h2 className="mt-1 text-lg font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
@@ -1239,7 +1234,7 @@ function DashboardEmptyState({
   }
 
   return (
-    <section className="mt-6 rounded-2xl border border-dashed border-[#C8D4E2] bg-white p-5 text-sm text-[#5F6F82] shadow-sm">
+    <section className="mt-6 rounded-2xl border border-[#DBE4EE] bg-white p-5 text-sm text-[#5F6F82] shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">{eyebrow}</p>
       <h2 className="mt-1 text-xl font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
       <p className="mt-2 max-w-2xl leading-6">{description}</p>
@@ -1260,7 +1255,7 @@ function DashboardEmptyState({
 
 function UpcomingPayments({ subscriptions }: { subscriptions: UpcomingPayment[] }) {
   return (
-    <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE] sm:p-5">
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#DBE4EE] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-extrabold tracking-tight">Kommende trekk</h2>
@@ -1306,7 +1301,7 @@ function UpcomingPayments({ subscriptions }: { subscriptions: UpcomingPayment[] 
           })}
         </div>
       ) : (
-        <div className="mt-4 rounded-2xl border border-dashed border-[#C8D4E2] bg-[#F7F9FC] p-5 text-sm text-[#5F6F82]">
+        <div className="mt-4 rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-5 text-sm text-[#5F6F82]">
           <p className="font-extrabold text-[#0D1B2A]">Ingen kjente trekk de neste 30 dagene</p>
           <p className="mt-2 leading-6">
             Legg inn neste trekk på abonnementene dine for å få bedre varsling og en mer nyttig tidslinje.
@@ -1420,7 +1415,7 @@ function SavingsInsight({
   const yearlySavings = monthlySavings * 12;
 
   return (
-    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
         <div className="bg-[#0D1B2A] p-5 text-white">
           <h2 className="text-lg font-extrabold tracking-tight">Sparingsinnsikt</h2>

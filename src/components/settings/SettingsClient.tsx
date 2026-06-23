@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
+import { AuthPageHeader } from "@/components/ui/AuthPageHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { useToast } from "@/components/ui/ToastProvider";
 import { resetAnalyticsIdentity } from "@/lib/analytics";
@@ -61,10 +62,10 @@ type NotificationForm = {
 };
 
 const primaryButtonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-xl bg-[#C8102E] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex min-h-11 items-center justify-center rounded-xl bg-[#C8102E] px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-[#C8102E]/15 transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55";
 const primaryLinkClass = primaryButtonClass;
 const secondaryButtonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] bg-white px-4 py-2.5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] bg-white px-4 py-2.5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 hover:bg-[#FFF8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55";
 const secondaryLinkClass = secondaryButtonClass;
 
 export function SettingsClient({
@@ -268,12 +269,12 @@ export function SettingsClient({
   }
 
   return (
-    <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-7 sm:py-8">
-      <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Konto</p>
-      <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Innstillinger</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-        Administrer plan, profil, tilkoblinger og varsler for Aboslutt-kontoen din.
-      </p>
+    <section className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7">
+      <AuthPageHeader
+        description="Administrer plan, profil, tilkoblinger og varsler for Aboslutt-kontoen din."
+        eyebrow="Konto"
+        title="Innstillinger"
+      />
 
       {message ? (
         <div className="mt-5 rounded-2xl bg-white p-4 text-sm font-semibold text-[#0D1B2A] shadow-sm ring-1 ring-[#DBE4EE]">
@@ -465,7 +466,7 @@ function SectionCard({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE] sm:p-6">
+    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="mb-5">
         <h2 className="text-lg font-extrabold tracking-tight text-[#0D1B2A]">{title}</h2>
         <p className="mt-1 text-sm leading-6 text-[#5F6F82]">{description}</p>
@@ -509,7 +510,7 @@ function ConnectionRow({
 }) {
   return (
     <div className="flex flex-col gap-4 rounded-2xl bg-[#F7F9FC] p-4 ring-1 ring-[#E6EDF5] sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-4">
+      <div className="flex min-w-0 items-start gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
           <Image alt={logoAlt} className="h-8 w-8 object-contain" height={32} src={logoSrc} width={32} />
         </div>
@@ -720,7 +721,7 @@ function BillingSection({
           )}
         </div>
       ) : showPricingLink ? (
-        <div className="mt-5 flex flex-col gap-3 rounded-xl border border-dashed border-[#C8D4E2] bg-[#F7F9FC] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-5 flex flex-col gap-3 rounded-xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-extrabold text-[#0D1B2A]">Du bruker gratisplanen</p>
             <p className="mt-1 text-sm leading-6 text-[#5F6F82]">

@@ -12,7 +12,7 @@ export function PlanStatusCard({ plan, compact = false, onUpgradeClick }: PlanSt
   const features = getPlanFeatures(normalizedPlan);
 
   return (
-    <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Plan</p>

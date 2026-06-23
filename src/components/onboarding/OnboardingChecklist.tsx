@@ -55,7 +55,7 @@ export function OnboardingChecklist({
   if (isCollapsed) {
     return (
       <button
-        className="flex items-center justify-between gap-4 rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-[#DBE4EE] transition hover:ring-[#C8102E]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+        className="flex items-center justify-between gap-4 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-[#DBE4EE] transition hover:ring-[#C8102E]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
         onClick={() => {
           window.localStorage.removeItem(storageKey);
           setIsCollapsed(false);
@@ -74,7 +74,7 @@ export function OnboardingChecklist({
   }
 
   return (
-    <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Kom i gang</p>

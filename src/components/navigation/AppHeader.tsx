@@ -120,7 +120,7 @@ function NavLink({ link }: { link: NavigationLink }) {
   return (
     <Link
       aria-current={link.active ? "page" : undefined}
-      className={`rounded-xl px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
+      className={`whitespace-nowrap rounded-xl px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
         link.active ? "bg-white text-[#0D1B2A] shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"
       }`}
       href={link.href}
@@ -132,11 +132,11 @@ function NavLink({ link }: { link: NavigationLink }) {
 
 export function Logo({ href = "/", suffix }: { href?: string; suffix?: string }) {
   return (
-    <Link aria-label="Aboslutt" className="inline-flex items-center gap-3" href={href}>
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#C8102E] text-lg font-black text-white">
+    <Link aria-label="Aboslutt" className="inline-flex min-w-0 items-center gap-3" href={href}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#C8102E] text-lg font-black text-white">
         A
       </span>
-      <span className="text-xl font-extrabold tracking-tight text-white">
+      <span className="truncate text-xl font-extrabold tracking-tight text-white">
         Abo<span className="text-[#C8102E]">slutt</span>
         {suffix ? <span className="ml-2 text-sm font-bold text-white/45">{suffix}</span> : null}
       </span>

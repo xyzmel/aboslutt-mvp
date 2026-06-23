@@ -47,10 +47,10 @@ export function SubscriptionCard({
 
   return (
     <article
-      className={`group rounded-3xl border bg-white p-4 text-left shadow-sm transition sm:p-5 ${
+      className={`group rounded-2xl border bg-white p-4 text-left shadow-sm transition sm:p-5 ${
         isSelected
           ? "border-[#C8102E]/60 bg-[#FFF8F9] ring-2 ring-[#C8102E]/10"
-          : "border-[#DBE4EE] hover:-translate-y-0.5 hover:border-[#C8102E]/35 hover:shadow-md"
+          : "border-[#DBE4EE] hover:border-[#C8102E]/35 hover:shadow-md"
       } ${isCancelled ? "opacity-75" : ""}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -67,8 +67,8 @@ export function SubscriptionCard({
             {cancellationLabel ? <Badge label={cancellationLabel} tone="amber" /> : null}
           </div>
         </div>
-        <div className="rounded-2xl bg-[#F7F9FC] px-4 py-3 ring-1 ring-[#DBE4EE] sm:text-right">
-          <p className="text-2xl font-black tracking-tight text-[#0D1B2A]">
+        <div className="rounded-xl bg-[#F7F9FC] px-4 py-3 ring-1 ring-[#DBE4EE] sm:text-right">
+          <p className="text-2xl font-extrabold tracking-tight text-[#0D1B2A]">
             {formatCurrency(subscription.monthlyCost)} kr
           </p>
           <p className="mt-0.5 text-xs font-bold uppercase tracking-wide text-[#5F6F82]">
@@ -84,7 +84,7 @@ export function SubscriptionCard({
       </dl>
 
       {subscription.note ? (
-        <p className="mt-4 rounded-2xl bg-[#F7F9FC] px-3 py-2 text-sm leading-6 text-[#5F6F82] ring-1 ring-[#E6EDF5]">
+        <p className="mt-4 rounded-xl bg-[#F7F9FC] px-3 py-2 text-sm leading-6 text-[#5F6F82] ring-1 ring-[#E6EDF5]">
           {subscription.note}
         </p>
       ) : null}
@@ -137,7 +137,7 @@ export function SubscriptionCard({
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-[#FAFBFD] px-3 py-2.5 ring-1 ring-[#E6EDF5]">
+    <div className="rounded-xl bg-[#FAFBFD] px-3 py-2.5 ring-1 ring-[#E6EDF5]">
       <dt className="text-xs font-bold uppercase tracking-wide text-[#5F6F82]">{label}</dt>
       <dd className="mt-1 truncate text-sm font-extrabold text-[#0D1B2A]">{value}</dd>
     </div>

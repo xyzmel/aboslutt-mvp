@@ -10,6 +10,7 @@ import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog"
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
+import { AuthPageHeader } from "@/components/ui/AuthPageHeader";
 import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import type { EmailSubscriptionCandidate } from "@/lib/email-subscription-parser";
@@ -608,9 +609,9 @@ export default function EmailImportPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] text-[#0D1B2A]">
-      <AppHeader maxWidthClassName="max-w-5xl" />
+      <AppHeader />
 
-      <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-7 sm:py-8">
+      <section className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7">
         {status === "unauthenticated" ? (
           <div className="mb-6 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-5 text-sm text-[#C8102E]">
             <p className="font-bold">Du må logge inn for å importere abonnementer.</p>
@@ -624,7 +625,11 @@ export default function EmailImportPage() {
           </div>
         ) : null}
 
-        <EmailImportHeader />
+        <AuthPageHeader
+          description="Koble til e-post eller lim inn en kvittering. Du velger alltid selv hva som lagres."
+          eyebrow="E-postimport"
+          title="Finn abonnementer i e-posten din"
+        />
         <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -815,7 +820,7 @@ export default function EmailImportPage() {
             E-posttekst
           </label>
           <textarea
-            className="mt-2 min-h-36 w-full resize-y rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A]"
+            className="mt-2 min-h-32 w-full resize-y rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none transition focus:border-[#0D1B2A] focus:ring-2 focus:ring-[#C8102E]/20"
             id="emailText"
             onChange={(event) => setEmailText(event.target.value)}
             placeholder="Eksempel: Kvittering fra Spotify. Beløp kr 129. Neste trekk 3. jul."
@@ -905,20 +910,6 @@ export default function EmailImportPage() {
   );
 }
 
-function EmailImportHeader() {
-  return (
-    <>
-      <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">E-postimport</p>
-      <h1 className="mt-2 text-3xl font-extrabold tracking-tight">
-        Finn abonnementer i e-posten din
-      </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5F6F82]">
-        Koble til e-posten din, så finner vi mulige abonnementer og kvitteringer. Du velger selv hva som skal importeres.
-      </p>
-    </>
-  );
-}
-
 function ProviderCard({
   name,
   imageSrc,
@@ -948,20 +939,20 @@ function ProviderCard({
   }[statusTone];
 
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 sm:p-5">
-      <div className="flex items-start gap-4">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
+    <article className="flex min-h-[218px] flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 shadow-sm transition hover:border-[#C8D4E2] sm:p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
           <Image
             alt={imageAlt}
-            className="h-full w-full object-contain"
-            height={64}
+            className="h-8 w-8 object-contain"
+            height={32}
             src={imageSrc}
-            width={64}
+            width={32}
           />
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-extrabold tracking-tight">{name}</h3>
+            <h3 className="text-base font-extrabold tracking-tight">{name}</h3>
             {status ? (
               <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClass}`}>
                 {status}
@@ -978,11 +969,11 @@ function ProviderCard({
         </div>
       </div>
 
-      {feedback ? <p className="mt-4 text-sm font-semibold text-[#5F6F82]">{feedback}</p> : null}
+      {feedback ? <p className="mt-3 text-sm leading-6 text-[#5F6F82]">{feedback}</p> : null}
 
-      <div className="pt-4">
+      <div className="mt-auto pt-4">
         <div className="flex flex-col gap-2">{action}</div>
-        {secondaryAction ? <div className="mt-3">{secondaryAction}</div> : null}
+        {secondaryAction ? <div className="mt-2">{secondaryAction}</div> : null}
       </div>
     </article>
   );
