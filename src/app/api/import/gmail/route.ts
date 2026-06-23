@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isGoogleMailConnectEnabled } from "@/lib/auth-provider-config.mjs";
 import { getCurrentUser } from "@/lib/current-user";
 import {
   normalizeMerchantKey,
@@ -40,6 +41,7 @@ class GmailImportError extends Error {
       | "GMAIL_RATE_LIMITED"
       | "GMAIL_UPSTREAM_ERROR"
       | "GMAIL_INTERNAL_ERROR"
+      | "GMAIL_UNAVAILABLE"
       | "PLAN_REQUIRED",
     message: string,
     public status: number,
@@ -65,6 +67,14 @@ export async function POST(request: Request) {
 
     if (!currentUser) {
       throw new GmailImportError("UNAUTHORIZED", "Du må være logget inn.", 401);
+    }
+
+    if (!isGoogleMailConnectEnabled()) {
+      throw new GmailImportError(
+        "GMAIL_UNAVAILABLE",
+        "Gmail-import blir tilgjengelig når godkjenningen er fullført.",
+        503,
+      );
     }
 
     if (!canUseGmailScan(currentUser)) {

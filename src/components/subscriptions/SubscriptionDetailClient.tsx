@@ -7,6 +7,7 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { useToast } from "@/components/ui/ToastProvider";
+import { getSubscriptionLifecycle } from "@/lib/subscription-lifecycle.mjs";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
 import type {
   BillingInterval,
@@ -36,7 +37,6 @@ const statusOptions: [SubscriptionStatus, string][] = [
   ["active", "Aktiv"],
   ["trial", "Prøveperiode"],
   ["yearly", "Årlig"],
-  ["cancelled", "Avsluttet"],
 ];
 
 const intervalOptions: [BillingInterval, string][] = [
@@ -56,8 +56,9 @@ export function SubscriptionDetailClient({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const lifecycle = getSubscriptionLifecycle(subscription);
+  const actions = lifecycle.actions;
   const [form, setForm] = useState<SubscriptionForm>({
     name: initialSubscription.name,
     category: initialSubscription.category,
@@ -107,57 +108,33 @@ export function SubscriptionDetailClient({
     }
   }
 
-  async function markAsCancelled() {
-    const confirmed = window.confirm("Vil du markere abonnementet som avsluttet?");
-
-    if (!confirmed) {
-      return;
-    }
-
-    setIsCancelling(true);
-    setErrorMessage(null);
-    try {
-      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled" }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Kunne ikke markere abonnementet som avsluttet.");
-      }
-
-      setSubscription((await response.json()) as Subscription);
-      showToast({ title: "Abonnement avsluttet", message: "Statusen er oppdatert.", tone: "success" });
-    } catch {
-      const message = "Kunne ikke markere abonnementet som avsluttet akkurat nå.";
-      setErrorMessage(message);
-      showToast({ title: "Oppdatering feilet", message, tone: "error" });
-    } finally {
-      setIsCancelling(false);
-    }
-  }
-
   async function deleteSubscription() {
-    const confirmed = window.confirm("Vil du slette abonnementet?");
+    const confirmation = window.prompt(
+      `Dette sletter ${subscription.name} permanent. Skriv SLETT for å bekrefte.`,
+    );
 
-    if (!confirmed) {
+    if (confirmation !== "SLETT") {
       return;
     }
 
     setIsDeleting(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(`/api/subscriptions/${subscription.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation }),
+      });
 
       if (!response.ok) {
-        throw new Error("Kunne ikke slette abonnementet.");
+        const result = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(result.message ?? "Kunne ikke slette abonnementet.");
       }
 
       showToast({ title: "Abonnement slettet", message: "Du sendes tilbake til oversikten.", tone: "success" });
       router.push("/dashboard");
-    } catch {
-      const message = "Kunne ikke slette abonnementet akkurat nå.";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Kunne ikke slette abonnementet akkurat nå.";
       setErrorMessage(message);
       showToast({ title: "Sletting feilet", message, tone: "error" });
       setIsDeleting(false);
@@ -186,39 +163,35 @@ export function SubscriptionDetailClient({
               </h1>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                onClick={() => setIsEditing((current) => !current)}
-                type="button"
-              >
-                {isEditing ? "Lukk redigering" : "Rediger"}
-              </button>
-              <Link
-                className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-center text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
-                href={`/subscriptions/${subscription.id}/cancel`}
-              >
-                Lag oppsigelse
-              </Link>
-              <LoadingButton
-                className="px-4 py-2.5"
-                isLoading={isCancelling}
-                loadingLabel="Oppdaterer..."
-                onClick={markAsCancelled}
-                type="button"
-                variant="destructive"
-              >
-                Marker avsluttet
-              </LoadingButton>
-              <LoadingButton
-                className="px-4 py-2.5"
-                isLoading={isDeleting}
-                loadingLabel="Sletter..."
-                onClick={deleteSubscription}
-                type="button"
-                variant="destructive"
-              >
-                Slett
-              </LoadingButton>
+              {actions.canEdit ? (
+                <button
+                  className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                  onClick={() => setIsEditing((current) => !current)}
+                  type="button"
+                >
+                  {isEditing ? "Lukk redigering" : "Rediger"}
+                </button>
+              ) : null}
+              {actions.canStartCancellation || actions.canContinueCancellation ? (
+                <Link
+                  className="rounded-xl border border-[#DBE4EE] px-4 py-2.5 text-center text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50"
+                  href={`/subscriptions/${subscription.id}/cancel`}
+                >
+                  {actions.canContinueCancellation ? "Fortsett oppsigelse" : "Si opp"}
+                </Link>
+              ) : null}
+              {actions.canDelete ? (
+                <LoadingButton
+                  className="px-4 py-2.5"
+                  isLoading={isDeleting}
+                  loadingLabel="Sletter..."
+                  onClick={deleteSubscription}
+                  type="button"
+                  variant="destructive"
+                >
+                  Slett
+                </LoadingButton>
+              ) : null}
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { SettingsClient } from "@/components/settings/SettingsClient";
 import { isAdminUser } from "@/lib/admin";
+import { isGoogleMailConnectEnabled } from "@/lib/auth-provider-config.mjs";
 import { isVippsRecurringConfigured } from "@/lib/billing/vipps-recurring";
 import { getCurrentAppUser } from "@/lib/current-user";
 import { logger } from "@/lib/logger";
@@ -120,6 +121,7 @@ export default async function SettingsPage() {
         emailRemindersAvailable={emailRemindersAvailable}
         emailRemindersEnabled={notificationPreferences.emailRemindersEnabled}
         gmailScopeConnected={gmailScopeConnected}
+        googleMailConnectEnabled={isGoogleMailConnectEnabled()}
         googleConnected={gmailScopeConnected && !googleReconnectRequired}
         googleReconnectRequired={googleReconnectRequired}
         isAdmin={isAdminUser(currentUser)}

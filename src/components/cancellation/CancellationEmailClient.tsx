@@ -189,6 +189,13 @@ export function CancellationEmailClient({
       return;
     }
 
+    if (
+      status === "confirmed_cancelled" &&
+      !window.confirm("Bekreft at abonnementet faktisk er avsluttet hos leverandøren.")
+    ) {
+      return;
+    }
+
     setIsWorking(true);
     setMessage(null);
 

@@ -4,6 +4,13 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import EmailProvider from "next-auth/providers/email";
 import GoogleProvider from "next-auth/providers/google";
+import {
+  getGoogleAuthScope,
+  isMicrosoftLoginConfigured,
+  microsoftCommonWellKnownUrl,
+  microsoftLoginProviderId,
+  microsoftLoginScope,
+} from "@/lib/auth-provider-config.mjs";
 import nodemailer from "nodemailer";
 import {
   isEmailConfigured,
@@ -88,7 +95,7 @@ const providers: NextAuthOptions["providers"] = [
     allowDangerousEmailAccountLinking: true,
     authorization: {
       params: {
-        scope: "openid email profile https://www.googleapis.com/auth/gmail.readonly",
+        scope: getGoogleAuthScope(),
         access_type: "offline",
         prompt: "consent",
         response_type: "code",
@@ -136,6 +143,33 @@ if (smtpConfigured) {
       },
     }),
   );
+}
+
+if (isMicrosoftLoginConfigured()) {
+  providers.push({
+    id: microsoftLoginProviderId,
+    name: "Microsoft",
+    type: "oauth",
+    wellKnown: microsoftCommonWellKnownUrl,
+    clientId: process.env.MICROSOFT_CLIENT_ID?.trim(),
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET?.trim(),
+    authorization: {
+      params: {
+        scope: microsoftLoginScope,
+        response_type: "code",
+      },
+    },
+    checks: ["pkce", "state", "nonce"],
+    idToken: true,
+    profile(profile: MicrosoftLoginProfile) {
+      return {
+        id: profile.sub,
+        name: profile.name ?? null,
+        email: profile.email ?? profile.preferred_username ?? null,
+        image: null,
+      };
+    },
+  });
 }
 
 if (isVippsConfigured()) {
@@ -234,7 +268,14 @@ export const authOptions: NextAuthOptions = {
 
       if (account?.provider === "google" && user.id) {
         trackLoginCompleted(user.id, "google");
-        trackServerFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" }, user.id);
+        if (account.scope?.split(" ").includes("https://www.googleapis.com/auth/gmail.readonly")) {
+          trackServerFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" }, user.id);
+        }
+        return true;
+      }
+
+      if (account?.provider === microsoftLoginProviderId && user.id) {
+        trackLoginCompleted(user.id, "microsoft");
         return true;
       }
 
@@ -261,6 +302,13 @@ export const authOptions: NextAuthOptions = {
       return result.allowed;
     },
   },
+};
+
+type MicrosoftLoginProfile = {
+  sub: string;
+  name?: string | null;
+  email?: string | null;
+  preferred_username?: string | null;
 };
 
 function trackLoginCompleted(userId: string, method: string) {

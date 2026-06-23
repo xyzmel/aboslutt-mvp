@@ -40,6 +40,7 @@ type SettingsClientProps = {
   billingState: NormalizedSettingsBillingState;
   googleConnected: boolean;
   gmailScopeConnected: boolean;
+  googleMailConnectEnabled: boolean;
   googleReconnectRequired: boolean;
   isAdmin: boolean;
   microsoftConfigured: boolean;
@@ -74,6 +75,7 @@ export function SettingsClient({
   billingAgreement,
   billingState,
   googleConnected,
+  googleMailConnectEnabled,
   googleReconnectRequired,
   isAdmin,
   microsoftConfigured,
@@ -320,6 +322,21 @@ export function SettingsClient({
           title="Tilkoblinger"
         >
           <div className="grid gap-3">
+            {!googleMailConnectEnabled ? (
+              <ConnectionRow
+                description="Gmail-import blir tilgjengelig når godkjenningen er fullført."
+                logoAlt="Gmail"
+                logoSrc="/gmail.png"
+                primaryAction={
+                  <span className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#F8F1E8] px-4 py-2.5 text-sm font-bold text-[#8A4B13]">
+                    Midlertidig utilgjengelig
+                  </span>
+                }
+                status="Midlertidig utilgjengelig"
+                statusTone="warning"
+                title="Gmail"
+              />
+            ) : (
             <ConnectionRow
               description="Finn mulige abonnementer fra Gmail-kvitteringer når du selv starter en skanning."
               logoAlt="Gmail"
@@ -340,7 +357,7 @@ export function SettingsClient({
                 )
               }
               secondaryAction={
-                googleConnected ? (
+                googleMailConnectEnabled && googleConnected ? (
                   <a
                     className={secondaryLinkClass}
                     href="https://myaccount.google.com/permissions"
@@ -355,6 +372,7 @@ export function SettingsClient({
               statusTone={googleConnected ? "success" : googleReconnectRequired ? "warning" : "neutral"}
               title="Gmail"
             />
+            )}
 
             {microsoftConfigured || microsoftConnected || microsoftReconnectRequired ? (
               <ConnectionRow

@@ -1,3 +1,4 @@
+import { isGoogleMailConnectEnabled, isMicrosoftLoginConfigured } from "@/lib/auth-provider-config.mjs";
 import { isSmtpConfigured } from "@/lib/smtp";
 
 export function isVippsConfigured() {
@@ -12,6 +13,12 @@ export function isGoogleConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim());
 }
 
+export function isGoogleMailConfigured() {
+  return isGoogleConfigured() && isGoogleMailConnectEnabled();
+}
+
+export { isGoogleMailConnectEnabled, isMicrosoftLoginConfigured };
+
 export function isEmailConfigured() {
   return isSmtpConfigured();
 }
@@ -19,6 +26,8 @@ export function isEmailConfigured() {
 export function getSafeAuthConfigStatus() {
   return {
     googleConfigured: isGoogleConfigured(),
+    googleMailConnectEnabled: isGoogleMailConnectEnabled(),
+    microsoftConfigured: isMicrosoftLoginConfigured(),
     vippsConfigured: isVippsConfigured(),
     emailConfigured: isEmailConfigured(),
   };

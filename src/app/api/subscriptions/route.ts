@@ -4,6 +4,7 @@ import { normalizeMerchantKey, normalizeMerchantName } from "@/lib/email-subscri
 import { logger } from "@/lib/logger";
 import { canAddManualSubscription, getManualSubscriptionLimit } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
+import { canDeleteSubscription, validateSubscriptionDeletion } from "@/lib/subscription-lifecycle.mjs";
 import {
   isValidSubscriptionDateInput,
   normalizeNextPaymentDate,
@@ -185,11 +186,45 @@ function withCancellationStatus<T extends {
   };
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const currentUser = await getCurrentUser();
 
   if (!currentUser) {
     return unauthorizedResponse();
+  }
+
+  const subscriptions = await prisma.subscription.findMany({
+    where: { userId: currentUser.id },
+    select: subscriptionSelect,
+  });
+
+  const blockedCount = subscriptions.filter((subscription) => !canDeleteSubscription(subscription)).length;
+  if (blockedCount > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CANCELLATION_REQUIRED",
+        message: "Abonnementet må avsluttes før det kan fjernes.",
+        blockedCount,
+      },
+      { status: 409 },
+    );
+  }
+
+  const confirmation = await getDeletionConfirmation(request);
+  const missingConfirmationCount = subscriptions.filter(
+    (subscription) => !validateSubscriptionDeletion(subscription, confirmation).ok,
+  ).length;
+  if (missingConfirmationCount > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CONFIRMATION_REQUIRED",
+        message: "Skriv SLETT for å bekrefte permanent sletting.",
+        blockedCount: missingConfirmationCount,
+      },
+      { status: 400 },
+    );
   }
 
   const result = await prisma.subscription.deleteMany({
@@ -197,6 +232,17 @@ export async function DELETE() {
   });
 
   return NextResponse.json({ ok: true, deletedCount: result.count });
+}
+
+async function getDeletionConfirmation(request: Request) {
+  const url = new URL(request.url);
+  const queryConfirmation = url.searchParams.get("confirm");
+  if (queryConfirmation) {
+    return queryConfirmation;
+  }
+
+  const payload = (await request.json().catch(() => ({}))) as { confirmation?: unknown };
+  return typeof payload.confirmation === "string" ? payload.confirmation.trim() : null;
 }
 
 function getStatusFromPayload(payload: Record<string, unknown>): SubscriptionStatus {

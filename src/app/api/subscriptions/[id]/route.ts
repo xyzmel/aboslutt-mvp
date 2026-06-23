@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
 import { normalizeMerchantKey, normalizeMerchantName } from "@/lib/email-subscription-parser";
 import { prisma } from "@/lib/prisma";
+import { validateSubscriptionDeletion } from "@/lib/subscription-lifecycle.mjs";
 import {
   isValidSubscriptionDateInput,
   normalizeNextPaymentDate,
@@ -100,6 +101,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json({ error: "Ugyldig status." }, { status: 400 });
     }
+    if (status === "cancelled") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "CANCELLATION_FLOW_REQUIRED",
+          message: "Bruk oppsigelsesflyten for å markere abonnementet som avsluttet.",
+        },
+        { status: 409 },
+      );
+    }
     data.status = status;
   }
 
@@ -178,15 +189,38 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const result = await prisma.subscription.deleteMany({
+  const subscription = await prisma.subscription.findFirst({
     where: { id, userId: currentUser.id },
+    select: subscriptionSelect,
   });
 
-  if (result.count === 0) {
+  if (!subscription) {
     return NextResponse.json({ error: "Fant ikke abonnementet." }, { status: 404 });
   }
 
+  const confirmation = await getDeletionConfirmation(_request);
+  const deletion = validateSubscriptionDeletion(subscription, confirmation);
+  if (!deletion.ok) {
+    return NextResponse.json(
+      { ok: false, error: deletion.error, message: deletion.message, lifecycle: deletion.lifecycle },
+      { status: deletion.status },
+    );
+  }
+
+  await prisma.subscription.delete({ where: { id: subscription.id } });
+
   return NextResponse.json({ ok: true });
+}
+
+async function getDeletionConfirmation(request: Request) {
+  const url = new URL(request.url);
+  const queryConfirmation = url.searchParams.get("confirm");
+  if (queryConfirmation) {
+    return queryConfirmation;
+  }
+
+  const payload = (await request.json().catch(() => ({}))) as { confirmation?: unknown };
+  return typeof payload.confirmation === "string" ? payload.confirmation.trim() : null;
 }
 
 async function rolloverSubscription<T extends { id: string; nextPayment: string; billingInterval: string; status: string }>(

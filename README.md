@@ -40,6 +40,7 @@ BETA_ALLOWED_EMAILS=
 
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+GOOGLE_MAIL_CONNECT_ENABLED=false
 GMAIL_IMPORT_DEBUG=false
 
 # PostHog, Sentry og Vercel Speed Insights.
@@ -57,7 +58,7 @@ SENTRY_AUTH_TOKEN=
 SENTRY_RELEASE=
 NEXT_PUBLIC_SENTRY_RELEASE=
 
-# Microsoft Outlook import. Authorization Code Flow med delegated Graph scopes.
+# Microsoft login og Outlook import. Login bruker egen NextAuth-callback uten Mail.Read.
 MICROSOFT_CLIENT_ID=
 MICROSOFT_CLIENT_SECRET=
 MICROSOFT_TENANT_ID=common
@@ -102,7 +103,7 @@ Vercel Speed Insights lastes bare i deployede miljøer gjennom App Router-integr
 
 ## Subscription Management
 
-Aboslutt beta har manuell abonnementshåndtering som kjernefunksjon. Brukeren kan legge til, redigere, slette og markere abonnementer som avsluttet uten å koble til Gmail.
+Aboslutt har manuell abonnementshåndtering som kjernefunksjon. Brukeren kan legge til og redigere aktive abonnementer uten å koble til Gmail.
 
 Abonnementer har nå navn, månedlig kostnad, kategori, status, faktureringsintervall, neste trekk, notat, kilde og eventuell import-confidence. Faktureringsintervall lagres som `monthly`, `yearly` eller `unknown`, og vises i UI som `Månedlig`, `Årlig` eller `Ukjent`.
 
@@ -117,6 +118,19 @@ Aboslutt har en Level 2-oppsigelsesflyt for beta/premium/admin-brukere. Brukeren
 Viktig produktregel: Aboslutt markerer ikke et abonnement som avsluttet bare fordi en e-post er sendt. Status blir `Venter på bekreftelse` etter sending, og abonnementet blir først markert som avsluttet når brukeren selv velger `Bekreftet avsluttet`.
 
 Gratis-brukere kan lage og kopiere utkast, men kan ikke sende oppsigelsesepost via Aboslutt. Sending via Aboslutt krever beta, premium eller admin.
+
+### Abonnementslivssyklus
+
+Produktstatus normaliseres i `src/lib/subscription-lifecycle.mjs` og brukes av dashboard, detaljside og API-beskyttelse.
+
+- `active`: vises i abonnementlisten, kan redigeres, åpnes og startes for oppsigelse. Permanent sletting er ikke tillatt.
+- `cancellation_in_progress`: vises i abonnementlisten og aktive oppsigelser. Brukeren kan fortsette oppsigelsen, oppdatere status, legge til dokumentasjon og fullføre eller avbryte prosessen. Det opprettes ikke en ny parallell oppsigelse.
+- `cancelled`: vises i historikk. Brukeren kan åpne detaljer og dokumentasjon. `Si opp` vises ikke, og abonnementet tas ut av kommende trekk.
+- `archived`: holdes utenfor aktive lister og historikk, men kan gjenopprettes eller slettes hvis funksjonen støttes i UI.
+
+Permanent sletting er bare tillatt for `cancelled` eller `archived`, og krever at brukeren bekrefter med `SLETT`. Aktive abonnementer svarer med `CANCELLATION_REQUIRED` og meldingen `Abonnementet må avsluttes før det kan fjernes.`
+
+Eldre eller inkonsistente data håndteres deterministisk: et abonnement med `confirmed_cancelled` oppsigelsesstatus behandles som `cancelled` selv om abonnementsstatusen fortsatt er `active`.
 
 ### Leverandørkatalog
 
@@ -317,7 +331,14 @@ GOOGLE_CLIENT_SECRET=...
 
 Gmail read-only er en Google restricted scope. For privat lokal MVP-testing kan du bruke test users på OAuth consent screen. Produksjonsbruk krever normalt ekstra verifisering og en sikkerhetsvurdering fra Google.
 
-## Microsoft Entra Outlook Setup
+## Microsoft Entra Login Og Outlook Setup
+
+Microsoft brukes to steder, med separate formål:
+
+- Innlogging via NextAuth-provider `microsoft-login`, med bare `openid profile email`.
+- Outlook-import via `/api/import/microsoft/connect`, med `User.Read`, `Mail.Read` og `offline_access`.
+
+Disse må holdes adskilt. Microsoft-login skal ikke gi Outlook mailbox-tilgang, og Outlook-importtoken skal ikke overskrives av innloggingstoken.
 
 Første fase av Outlook-import bruker Microsoft OAuth Authorization Code Flow og delegated Microsoft Graph permissions for den innloggede brukeren. Aboslutt ber bare om:
 
@@ -329,9 +350,11 @@ offline_access
 
 Ikke gi appen application-wide mailbox permissions, og ikke legg til scopes for sending, endring eller sletting av e-post.
 
-Opprett en App registration i Microsoft Entra admin center og legg inn Web redirect URI:
+Opprett en App registration i Microsoft Entra admin center og legg inn disse Web redirect URI-ene:
 
 ```text
+https://www.aboslutt.no/api/auth/callback/microsoft-login
+http://localhost:3000/api/auth/callback/microsoft-login
 https://www.aboslutt.no/api/import/microsoft/callback
 http://localhost:3000/api/import/microsoft/callback
 ```
@@ -367,6 +390,14 @@ Ikke bruk en tenant-spesifikk directory ID, `organizations`, eller navnet på en
 Første fase implementerer konto-tilkobling, trygg frakobling og en manuell testskann av innboksen. Abonnementsgjenkjenning, AI-analyse og automatisk recurring skanning er ikke implementert ennå.
 
 ## Google OAuth Troubleshooting
+
+Gmail mailbox-kobling er midlertidig styrt av:
+
+```bash
+GOOGLE_MAIL_CONNECT_ENABLED=false
+```
+
+Når flagget er `false`, kan Google fortsatt brukes til vanlig innlogging med identity-only scopes, men Gmail-kortet på import- og innstillingssiden viser `Midlertidig utilgjengelig`, og `POST /api/import/gmail` avviser nye skanninger med en trygg brukerbeskjed. Eksisterende Google-kontoer og Gmail-importkode slettes ikke. For å reaktivere Gmail-import etter godkjenning: sett `GOOGLE_MAIL_CONNECT_ENABLED=true`, bekreft at Google OAuth consent er godkjent for Gmail read-only, og redeploy Vercel.
 
 Hvis innlogging feiler med `Unknown argument refresh_token_expires_in`, mangler Prisma `Account`-modellen feltet Google sender tilbake. Kjør:
 
@@ -649,6 +680,7 @@ Auth callback/redirect URI-er må matche domenet:
 
 ```text
 Google: https://ditt-domene.no/api/auth/callback/google
+Microsoft login: https://ditt-domene.no/api/auth/callback/microsoft-login
 Vipps: https://ditt-domene.no/api/auth/callback/vipps
 ```
 
@@ -656,6 +688,7 @@ For lokal testing er callbackene:
 
 ```text
 Google: http://localhost:3000/api/auth/callback/google
+Microsoft login: http://localhost:3000/api/auth/callback/microsoft-login
 Vipps: http://localhost:3000/api/auth/callback/vipps
 ```
 
@@ -666,6 +699,7 @@ SQLite var kun for tidlig lokal MVP-testing. Hovedskjemaet bruker nå Postgres. 
 - Legg inn Vercel env vars: `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `DATABASE_URL`, Google OAuth-vars, SMTP-vars, `BETA_SIGNUPS_ENABLED`, `BETA_ALLOWED_EMAILS` og Vipps-vars hvis Vipps er aktivert.
 - Sett `NEXTAUTH_URL` til kanonisk domene, for eksempel `https://www.aboslutt.no`.
 - Legg inn Google redirect URI: `https://www.aboslutt.no/api/auth/callback/google`.
+- Legg inn Microsoft login redirect URI: `https://www.aboslutt.no/api/auth/callback/microsoft-login`.
 - Legg inn Vipps redirect URI: `https://www.aboslutt.no/api/auth/callback/vipps`.
 - Kjør Neon/Postgres-migrasjoner med `npm run prisma:deploy`.
 - Kjør seed bare hvis du ønsker utviklings-/startdata: `npm run prisma:seed`.

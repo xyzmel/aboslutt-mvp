@@ -7,6 +7,7 @@ import { getProviders, signIn } from "next-auth/react";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { trackFunnelEvent } from "@/lib/analytics";
+import { getSafeAuthErrorMessage, microsoftLoginProviderId } from "@/lib/auth-provider-config.mjs";
 import { siteConfig } from "@/lib/site-config";
 
 const vippsLoginButtonAsset = "/vipps-login-pill-default.svg";
@@ -18,6 +19,7 @@ type MagicLinkAuthScreenProps = {
   mode: AuthMode;
   authConfig: {
     googleConfigured: boolean;
+    microsoftConfigured: boolean;
     vippsConfigured: boolean;
     emailConfigured: boolean;
   };
@@ -44,8 +46,10 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
   });
   const [providers, setProviders] = useState({
     google: authConfig.googleConfigured,
+    microsoft: authConfig.microsoftConfigured,
     vipps: authConfig.vippsConfigured,
   });
+  const [oauthLoadingProvider, setOauthLoadingProvider] = useState<"google" | "microsoft" | "vipps" | null>(null);
   const callbackUrl = getSafeCallbackUrl();
   const isRegister = mode === "register";
   const title = isRegister ? "Opprett konto" : "Logg inn";
@@ -66,6 +70,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       }
       setProviders({
         google: authConfig.googleConfigured || Boolean(providerList?.google),
+        microsoft: authConfig.microsoftConfigured || Boolean(providerList?.[microsoftLoginProviderId]),
         vipps: authConfig.vippsConfigured || Boolean(providerList?.vipps),
       });
     }
@@ -75,7 +80,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
     return () => {
       isMounted = false;
     };
-  }, [authConfig.googleConfigured, authConfig.vippsConfigured]);
+  }, [authConfig.googleConfigured, authConfig.microsoftConfigured, authConfig.vippsConfigured]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -138,6 +143,24 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function startOAuth(provider: "google" | "microsoft" | "vipps") {
+    if (oauthLoadingProvider) {
+      return;
+    }
+
+    setAuthErrorMessage(null);
+    setOauthLoadingProvider(provider);
+    const providerId = provider === "microsoft" ? microsoftLoginProviderId : provider;
+    signIn(providerId, { callbackUrl }).catch(() => {
+      setOauthLoadingProvider(null);
+      setAuthErrorMessage(
+        provider === "microsoft"
+          ? "Vi klarte ikke å logge deg inn med Microsoft. Prøv igjen."
+          : "Vi klarte ikke å starte innloggingen. Prøv igjen.",
+      );
+    });
+  }
+
   return (
     <main className="flex min-h-screen flex-col bg-[#0D1B2A] text-white">
       <PublicHeader />
@@ -165,7 +188,8 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               {providers.google ? (
                 <button
                   className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#0D1B2A] ring-1 ring-[#F3C3CC] hover:ring-[#C8102E]/50"
-                  onClick={() => signIn("google", { callbackUrl })}
+                  disabled={Boolean(oauthLoadingProvider)}
+                  onClick={() => startOAuth("google")}
                   type="button"
                 >
                   Prøv Google på nytt
@@ -176,7 +200,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
 
           <form className="mt-6 grid gap-4" onSubmit={submitAuth}>
             {isRegister ? (
-          <TextInput
+              <TextInput
                 autoComplete="name"
                 label="Navn"
                 onChange={(value) => updateField("name", value)}
@@ -214,7 +238,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
             ) : null}
             <button
               className="h-12 rounded-xl bg-[#0D1B2A] px-5 text-sm font-bold text-white transition hover:bg-[#15283c] disabled:opacity-55"
-              disabled={requestState === "loading"}
+              disabled={requestState === "loading" || Boolean(oauthLoadingProvider)}
               type="submit"
             >
               {requestState === "loading"
@@ -261,19 +285,32 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
           <div className="grid gap-3">
             {providers.google ? (
               <button
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#DBE4EE] bg-white px-5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
-                onClick={() => signIn("google", { callbackUrl })}
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#DBE4EE] bg-white px-5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
+                disabled={Boolean(oauthLoadingProvider)}
+                onClick={() => startOAuth("google")}
                 type="button"
               >
                 <GoogleIcon />
-                Fortsett med Google
+                {oauthLoadingProvider === "google" ? "Kobler til Google ..." : "Fortsett med Google"}
+              </button>
+            ) : null}
+            {providers.microsoft ? (
+              <button
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#DBE4EE] bg-white px-5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
+                disabled={Boolean(oauthLoadingProvider)}
+                onClick={() => startOAuth("microsoft")}
+                type="button"
+              >
+                <Image alt="" aria-hidden="true" className="h-5 w-5 object-contain" height={20} src="/outlook.png" width={20} />
+                {oauthLoadingProvider === "microsoft" ? "Kobler til Microsoft ..." : "Fortsett med Microsoft"}
               </button>
             ) : null}
             {providers.vipps ? (
               <button
                 aria-label="Logg inn med Vipps"
-                className="flex h-12 w-full items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-sm font-bold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#FF5B24] focus:ring-offset-2"
-                onClick={() => signIn("vipps", { callbackUrl })}
+                className="flex h-12 w-full items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-sm font-bold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#FF5B24] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
+                disabled={Boolean(oauthLoadingProvider)}
+                onClick={() => startOAuth("vipps")}
                 type="button"
               >
                 <Image
@@ -325,6 +362,10 @@ async function safeReadJson(response: Response) {
 }
 
 function getAuthErrorMessage(errorCode: string) {
+  if (["OAuthAccountNotLinked", "AccessDenied", "OAuthCallback", "Callback", "Configuration"].includes(errorCode)) {
+    return getSafeAuthErrorMessage(errorCode);
+  }
+
   const messages: Record<string, string> = {
     OAuthAccountNotLinked:
       "Denne e-posten er allerede brukt med en annen innloggingsmetode. Logg inn med e-post/passord først, og koble Google fra innstillinger.",

@@ -64,6 +64,7 @@ type PremiumGateState = {
 };
 
 type ProviderStatus = OutlookDisplayState;
+type ProviderSectionState = "loading" | "ready" | "error";
 
 type OutlookCandidate = {
   id: string;
@@ -118,7 +119,9 @@ export default function EmailImportPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailScopeConnected, setGmailScopeConnected] = useState(false);
+  const [googleMailConnectEnabled, setGoogleMailConnectEnabled] = useState(false);
   const [gmailScanAvailable, setGmailScanAvailable] = useState(true);
+  const [providerSectionState, setProviderSectionState] = useState<ProviderSectionState>("loading");
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
   const [microsoftEmail, setMicrosoftEmail] = useState<string | null>(null);
@@ -150,16 +153,19 @@ export default function EmailImportPage() {
     connectionRequestIdRef.current = requestId;
     const abortController = new AbortController();
     async function loadConnectionStatus() {
+      setProviderSectionState("loading");
       const response = await fetch("/api/connections", { cache: "no-store", signal: abortController.signal });
       if (!response.ok) {
         if (shouldApplyConnectionResponse(requestId, connectionRequestIdRef.current)) {
           setMicrosoftImportState("error");
+          setProviderSectionState("error");
         }
         return;
       }
       const result = (await response.json()) as {
         googleConnected: boolean;
         gmailScopeConnected: boolean;
+        googleMailConnectEnabled?: boolean;
         gmailScanAvailable?: boolean;
         microsoftConnected?: boolean;
         microsoftConfigured?: boolean;
@@ -173,6 +179,7 @@ export default function EmailImportPage() {
 
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
+      setGoogleMailConnectEnabled(Boolean(result.googleMailConnectEnabled));
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
       if (result.gmailScopeConnected) {
         trackFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" });
@@ -197,18 +204,21 @@ export default function EmailImportPage() {
           setMicrosoftMessage("Outlook er koblet til og klar for skanning.");
           trackFunnelEvent("email_provider_connected", { provider: "outlook", result: "success" });
         }
+        setProviderSectionState("ready");
         return;
       }
 
       if (microsoft) {
         setMicrosoftImportState(microsoft === "expired" ? "expired" : microsoft === "cancelled" ? "not_connected" : "scan_failed");
         setMicrosoftMessage(getMicrosoftConnectionMessage(microsoft));
+        setProviderSectionState("ready");
         return;
       }
 
       if (!microsoftExpired) {
         setMicrosoftImportState(result.microsoftConnected ? "connected" : "not_connected");
       }
+      setProviderSectionState("ready");
     }
 
     loadConnectionStatus().catch((error) => {
@@ -218,6 +228,7 @@ export default function EmailImportPage() {
 
       if (shouldApplyConnectionResponse(requestId, connectionRequestIdRef.current)) {
         setMicrosoftImportState("error");
+        setProviderSectionState("error");
       }
     });
 
@@ -589,7 +600,15 @@ export default function EmailImportPage() {
     }).catch(() => null);
   }
 
-  const gmailStatus: ProviderStatus = isScanningGmail ? "scanning" : gmailScopeConnected ? "connected" : "disconnected";
+  const gmailStatus: ProviderStatus = providerSectionState === "error"
+    ? "error"
+    : !googleMailConnectEnabled
+    ? "unavailable"
+    : isScanningGmail
+      ? "scanning"
+      : gmailScopeConnected
+        ? "connected"
+        : "disconnected";
   const outlookStatus = getOutlookProviderStatus(microsoftImportState, microsoftConnected, microsoftConfigured);
   const outlookEmail = outlookStatus === "connected" ? sanitizeDisplayEmail(microsoftEmail) : null;
   const outlookFeedback =
@@ -648,10 +667,21 @@ export default function EmailImportPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="mt-5 grid gap-4 md:grid-cols-2" aria-busy={providerSectionState === "loading"}>
+            {providerSectionState === "loading" ? (
+              <>
+                <ProviderCardSkeleton name="Gmail" imageAlt="Gmail-logo" imageSrc="/gmail.png" />
+                <ProviderCardSkeleton name="Outlook" imageAlt="Outlook-logo" imageSrc="/outlook.png" />
+              </>
+            ) : (
+              <>
             <ProviderCard
               action={
-                gmailScanAvailable && gmailStatus === "connected" ? (
+                !googleMailConnectEnabled ? (
+                  <p className="rounded-xl bg-[#F8F1E8] px-4 py-3 text-sm font-bold text-[#8A4B13]">
+                    Gmail-import blir tilgjengelig når godkjenningen er fullført.
+                  </p>
+                ) : gmailScanAvailable && gmailStatus === "connected" ? (
                   <LoadingButton isLoading={isScanningGmail} loadingLabel="Skanner..." onClick={scanGmail} type="button">
                     Skann e-post
                   </LoadingButton>
@@ -683,7 +713,9 @@ export default function EmailImportPage() {
               }
               connectedEmail={gmailStatus === "connected" ? session?.user?.email ?? null : null}
               feedback={
-                gmailConnected && !gmailScopeConnected
+                !googleMailConnectEnabled
+                  ? "Gmail-import blir tilgjengelig når godkjenningen er fullført."
+                  : gmailConnected && !gmailScopeConnected
                   ? "Koble til Gmail på nytt for å gi lesetilgang."
                   : scannedMessages !== null
                     ? `Skannet ${scannedMessages} meldinger.`
@@ -693,7 +725,7 @@ export default function EmailImportPage() {
               imageSrc="/gmail.png"
               name="Gmail"
               secondaryAction={
-                gmailScopeConnected ? (
+                googleMailConnectEnabled && gmailScopeConnected ? (
                   <button
                     className="text-xs font-bold text-[#5F6F82] hover:text-[#C8102E]"
                     onClick={() => signIn("google", { callbackUrl: "/import/email" })}
@@ -703,7 +735,7 @@ export default function EmailImportPage() {
                   </button>
                 ) : null
               }
-              status={getProviderStatusLabel(gmailStatus)}
+              status={!googleMailConnectEnabled ? "Midlertidig utilgjengelig" : getProviderStatusLabel(gmailStatus)}
               statusTone={getProviderStatusTone(gmailStatus)}
             />
 
@@ -778,6 +810,8 @@ export default function EmailImportPage() {
               }
               statusTone={getProviderStatusTone(outlookStatus)}
             />
+              </>
+            )}
           </div>
         </section>
 
@@ -939,7 +973,7 @@ function ProviderCard({
   }[statusTone];
 
   return (
-    <article className="flex min-h-[218px] flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 shadow-sm transition hover:border-[#C8D4E2] sm:p-5">
+    <article className="flex min-h-[252px] flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 shadow-sm transition hover:border-[#C8D4E2] sm:p-5">
       <div className="flex items-start gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
           <Image
@@ -969,12 +1003,52 @@ function ProviderCard({
         </div>
       </div>
 
-      {feedback ? <p className="mt-3 text-sm leading-6 text-[#5F6F82]">{feedback}</p> : null}
+      <div className="mt-3 min-h-[72px] text-sm leading-6 text-[#5F6F82]">
+        {feedback ? <p>{feedback}</p> : null}
+      </div>
 
       <div className="mt-auto pt-4">
-        <div className="flex flex-col gap-2">{action}</div>
+        <div className="flex min-h-11 flex-col justify-end gap-2">{action}</div>
         {secondaryAction ? <div className="mt-2">{secondaryAction}</div> : null}
       </div>
+    </article>
+  );
+}
+
+function ProviderCardSkeleton({
+  imageAlt,
+  imageSrc,
+  name,
+}: {
+  imageAlt: string;
+  imageSrc: string;
+  name: string;
+}) {
+  return (
+    <article
+      aria-label={`Henter status for ${name}`}
+      className="flex min-h-[252px] flex-col rounded-2xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 shadow-sm sm:p-5"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-[#DBE4EE]">
+          <Image alt={imageAlt} className="h-8 w-8 object-contain opacity-60" height={32} src={imageSrc} width={32} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-extrabold tracking-tight">{name}</h3>
+            <span className="h-6 w-28 animate-pulse rounded-full bg-[#E6EDF5]" aria-hidden="true" />
+          </div>
+          <div className="mt-2 h-4 w-36 animate-pulse rounded bg-[#E6EDF5]" aria-hidden="true" />
+        </div>
+      </div>
+      <div className="mt-3 min-h-[72px] space-y-2" aria-hidden="true">
+        <div className="h-4 w-11/12 animate-pulse rounded bg-[#E6EDF5]" />
+        <div className="h-4 w-8/12 animate-pulse rounded bg-[#E6EDF5]" />
+      </div>
+      <div className="mt-auto pt-4">
+        <div className="h-11 w-full animate-pulse rounded-xl bg-[#E6EDF5]" aria-hidden="true" />
+      </div>
+      <span className="sr-only">Henter tilkoblingsstatus.</span>
     </article>
   );
 }

@@ -9,6 +9,7 @@ import { cancellationProviders } from "@/data/cancellation-providers";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
 import { canSendCancellationEmail } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
+import { getSubscriptionLifecycle } from "@/lib/subscription-lifecycle.mjs";
 import { sendTransactionalEmail } from "@/lib/transactional-email";
 
 type RouteContext = {
@@ -50,6 +51,26 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND", message: "Fant ikke abonnementet." }, { status: 404 });
   }
 
+  const lifecycle = getSubscriptionLifecycle(subscription);
+  if (lifecycle.productStatus === "cancelled" || lifecycle.productStatus === "archived") {
+    return NextResponse.json(
+      { ok: false, error: "ALREADY_CANCELLED", message: "Abonnementet er allerede avsluttet." },
+      { status: 409 },
+    );
+  }
+
+  if (lifecycle.productStatus === "cancellation_in_progress") {
+    const existingRequest = await prisma.cancellationRequest.findFirst({
+      where: { userId: currentUser.id, subscriptionId: id },
+      orderBy: { updatedAt: "desc" },
+      select: requestSelect,
+    });
+
+    if (existingRequest) {
+      return NextResponse.json({ ok: true, request: existingRequest }, { status: 200 });
+    }
+  }
+
   const cancellationRequest = await prisma.cancellationRequest.findFirst({
     where: { userId: currentUser.id, subscriptionId: id },
     orderBy: { updatedAt: "desc" },
@@ -73,6 +94,26 @@ export async function POST(request: Request, context: RouteContext) {
   const subscription = await getOwnedSubscription(id, currentUser.id);
   if (!subscription) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND", message: "Fant ikke abonnementet." }, { status: 404 });
+  }
+
+  const lifecycle = getSubscriptionLifecycle(subscription);
+  if (lifecycle.productStatus === "cancelled" || lifecycle.productStatus === "archived") {
+    return NextResponse.json(
+      { ok: false, error: "ALREADY_CANCELLED", message: "Abonnementet er allerede avsluttet." },
+      { status: 409 },
+    );
+  }
+
+  if (lifecycle.productStatus === "cancellation_in_progress") {
+    const existingRequest = await prisma.cancellationRequest.findFirst({
+      where: { userId: currentUser.id, subscriptionId: id },
+      orderBy: { updatedAt: "desc" },
+      select: requestSelect,
+    });
+
+    if (existingRequest) {
+      return NextResponse.json({ ok: true, request: existingRequest }, { status: 200 });
+    }
   }
 
   const payload = await request.json().catch(() => ({}));
@@ -323,7 +364,16 @@ async function sendCancellationEmail({
 function getOwnedSubscription(id: string, userId: string) {
   return prisma.subscription.findFirst({
     where: { id, userId },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      cancellationRequests: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: { status: true },
+      },
+    },
   });
 }
 

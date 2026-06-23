@@ -17,6 +17,7 @@ import { SkeletonBlock } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import { getCancellationStatusLabel } from "@/lib/cancellation";
+import { getSubscriptionLifecycle, shouldIncludeUpcomingPayment } from "@/lib/subscription-lifecycle.mjs";
 import {
   formatDateForShortDisplay,
   normalizeDateInputValue,
@@ -156,28 +157,29 @@ export function DashboardClient() {
     loadSubscriptions();
   }, []);
 
-  const cancellableSubscriptions = subscriptionList.filter(
-    (subscription) => subscription.status !== "cancelled",
+  const mainSubscriptions = subscriptionList.filter(
+    (subscription) => getSubscriptionLifecycle(subscription).appearsInActiveList,
   );
-  const visibleSubscriptions = subscriptionList.filter(
+  const visibleSubscriptions = mainSubscriptions.filter(
     (subscription) => activeFilter === "all" || subscription.category === activeFilter,
   );
-  const selectedSubscriptions = subscriptionList.filter((subscription) =>
-    selectedIds.includes(subscription.id),
-  );
+  const selectedSubscriptions = mainSubscriptions.filter((subscription) => selectedIds.includes(subscription.id));
 
   const totalMonthlyCost = useMemo(
     () =>
       subscriptionList
-        .filter((subscription) => subscription.status !== "cancelled")
+        .filter((subscription) => getSubscriptionLifecycle(subscription).productStatus === "active")
         .reduce((sum, subscription) => sum + getMonthlyEquivalent(subscription), 0),
     [subscriptionList],
   );
   const yearlyEstimate = totalMonthlyCost * 12;
   const activeCount = subscriptionList.filter((subscription) =>
-    ["active", "trial", "yearly"].includes(subscription.status),
+    getSubscriptionLifecycle(subscription).appearsInActiveList,
   ).length;
-  const trialCount = subscriptionList.filter((subscription) => subscription.status === "trial").length;
+  const trialCount = subscriptionList.filter(
+    (subscription) =>
+      subscription.status === "trial" && getSubscriptionLifecycle(subscription).productStatus === "active",
+  ).length;
   const monthlySavings = selectedSubscriptions.reduce(
     (sum, subscription) => sum + getMonthlyEquivalent(subscription),
     0,
@@ -343,11 +345,11 @@ export function DashboardClient() {
 
   async function deleteSubscription(id: string) {
     const subscription = subscriptionList.find((item) => item.id === id);
-    const confirmed = window.confirm(
-      `Vil du slette ${subscription?.name ?? "dette abonnementet"}? Dette kan ikke angres.`,
+    const confirmation = window.prompt(
+      `Dette sletter abonnementet og tilhørende historikk permanent. Handlingen kan ikke angres.\n\nSkriv SLETT for å bekrefte sletting av ${subscription?.name ?? "dette abonnementet"}.`,
     );
 
-    if (!confirmed) {
+    if (confirmation !== "SLETT") {
       return;
     }
 
@@ -357,10 +359,13 @@ export function DashboardClient() {
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation }),
       });
 
       if (!response.ok) {
-        throw new Error("Kunne ikke slette abonnementet.");
+        const result = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(result.message ?? "Kunne ikke slette abonnementet.");
       }
 
       setSubscriptionList((currentSubscriptions) =>
@@ -373,8 +378,8 @@ export function DashboardClient() {
         message: subscription ? `${subscription.name} er fjernet.` : "Abonnementet er fjernet.",
         tone: "success",
       });
-    } catch {
-      const message = "Kunne ikke slette abonnementet akkurat nå.";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Kunne ikke slette abonnementet akkurat nå.";
       setErrorMessage(message);
       showToast({
         title: "Sletting feilet",
@@ -704,7 +709,7 @@ export function DashboardClient() {
             {isLoading ? (
               <div className="mt-4 grid gap-4 lg:grid-cols-2" aria-label="Henter abonnementer">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <SkeletonBlock className="h-56" key={index} />
+                  <SkeletonBlock className="h-[348px]" key={index} />
                 ))}
               </div>
             ) : (
@@ -725,16 +730,6 @@ export function DashboardClient() {
 
             {!isLoading && visibleSubscriptions.length === 0 ? (
               <SubscriptionsEmptyState onImportClick={explainPremiumFeature} />
-            ) : null}
-
-            {!isLoading && cancellableSubscriptions.length === 0 && subscriptionList.length > 0 ? (
-              <DashboardEmptyState
-                actionHref="#manual-add"
-                actionLabel="Legg til nytt abonnement"
-                description="Du har ingen aktive abonnementer akkurat nå. Legg inn et nytt når du starter eller oppdager en fast kostnad."
-                eyebrow="Oversikt"
-                title="Alle abonnementer er avsluttet"
-              />
             ) : null}
 
               </>
@@ -1090,7 +1085,7 @@ function SubscriptionsEmptyState({
           Importer fra e-post
         </Link>
       }
-      title="Du har ingen abonnementer ennå"
+      title="Ingen aktive abonnementer"
     />
   );
 }
@@ -1103,7 +1098,7 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
           actionHref="#subscriptions"
           actionLabel="Se abonnementer"
           compact
-        description="Fullførte oppsigelser og dokumentasjon samles her."
+        description="Abonnementer du avslutter, samles her med status og dokumentasjon."
           eyebrow="HISTORIKK"
         title="Ingen fullførte oppsigelser ennå"
         />
@@ -1118,7 +1113,7 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Historikk</p>
           <h2 className="mt-1 text-lg font-extrabold tracking-tight">Fullførte oppsigelser</h2>
           <p className="mt-1 text-sm text-[#5F6F82]">
-            Fullførte oppsigelser og dokumentasjon samles her.
+            Abonnementer du avslutter, samles her med status og dokumentasjon.
           </p>
         </div>
         <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -1477,7 +1472,7 @@ function getUpcomingPayments(subscriptions: Subscription[]): UpcomingPayment[] {
   thirtyDaysFromNow.setDate(today.getDate() + 30);
 
   return subscriptions
-    .filter((subscription) => ["active", "trial", "yearly"].includes(subscription.status))
+    .filter(shouldIncludeUpcomingPayment)
     .map((subscription) => ({
       subscription,
       paymentDate: parseNextPaymentDate(subscription.nextPayment),
@@ -1490,19 +1485,13 @@ function getUpcomingPayments(subscriptions: Subscription[]): UpcomingPayment[] {
 }
 
 function getActiveCancellations(subscriptions: Subscription[]) {
-  return subscriptions.filter((subscription) =>
-    ["draft", "ready", "sent", "awaiting_confirmation", "manual_required", "rejected"].includes(
-      subscription.cancellationRequest?.status ?? "",
-    ),
+  return subscriptions.filter(
+    (subscription) => getSubscriptionLifecycle(subscription).productStatus === "cancellation_in_progress",
   );
 }
 
 function getCompletedCancellations(subscriptions: Subscription[]) {
-  return subscriptions.filter(
-    (subscription) =>
-      subscription.status === "cancelled" ||
-      subscription.cancellationRequest?.status === "confirmed_cancelled",
-  );
+  return subscriptions.filter((subscription) => getSubscriptionLifecycle(subscription).appearsInHistory);
 }
 
 function getDaysSince(date: Date) {

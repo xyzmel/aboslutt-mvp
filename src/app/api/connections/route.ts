@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isGoogleMailConnectEnabled } from "@/lib/auth-provider-config.mjs";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
 import {
   getMicrosoftProviderName,
@@ -53,6 +54,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    googleMailConnectEnabled: isGoogleMailConnectEnabled(),
     googleConnected: Boolean(googleAccount),
     gmailScopeConnected: Boolean(googleAccount?.scope?.split(" ").includes(gmailReadonlyScope)),
     gmailScanAvailable: canUseGmailScan(currentUser),
