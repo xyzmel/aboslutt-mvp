@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { redactSensitiveObject } from "./src/lib/sensitive-data-redaction.mjs";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -14,6 +15,9 @@ Sentry.init({
     delete event.user?.email;
     delete event.user?.username;
     delete event.user?.ip_address;
+    redactSensitiveObject(event.extra);
+    redactSensitiveObject(event.contexts);
+    redactSensitiveObject(event.exception);
     return event;
   },
 });

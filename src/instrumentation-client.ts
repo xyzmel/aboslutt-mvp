@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { redactSensitiveObject } from "@/lib/sensitive-data-redaction.mjs";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -23,26 +24,11 @@ Sentry.init({
     delete event.user?.email;
     delete event.user?.username;
     delete event.user?.ip_address;
-    scrubObject(event.extra);
-    scrubObject(event.contexts);
+    redactSensitiveObject(event.extra);
+    redactSensitiveObject(event.contexts);
+    redactSensitiveObject(event.exception);
     return event;
   },
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
-
-function scrubObject(value: unknown): unknown {
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  for (const key of Object.keys(value as Record<string, unknown>)) {
-    if (/token|secret|authorization|cookie|password|email|subject|receipt|mailbox|reference|agreement|charge|vipps/i.test(key)) {
-      (value as Record<string, unknown>)[key] = "[redacted]";
-      continue;
-    }
-    scrubObject((value as Record<string, unknown>)[key]);
-  }
-
-  return value;
-}

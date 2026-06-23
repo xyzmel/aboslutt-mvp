@@ -11,7 +11,9 @@ import {
 
 export type AnalyticsEventName =
   | "account_created"
+  | "login_attempted"
   | "login_completed"
+  | "login_failed"
   | "onboarding_completed"
   | "subscription_added"
   | "subscription_updated"

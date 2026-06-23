@@ -7,13 +7,21 @@ import { getProviders, signIn } from "next-auth/react";
 import { PublicHeader } from "@/components/navigation/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { trackFunnelEvent } from "@/lib/analytics";
-import { getSafeAuthErrorMessage, microsoftLoginProviderId } from "@/lib/auth-provider-config.mjs";
+import { microsoftLoginProviderId } from "@/lib/auth-provider-config.mjs";
+import {
+  createAttemptedProviderCookie,
+  createClearedAttemptedProviderCookie,
+  getAuthErrorPresentation,
+  readAttemptedProvider,
+} from "@/lib/auth-login-state.mjs";
 import { siteConfig } from "@/lib/site-config";
 
 const vippsLoginButtonAsset = "/vipps-login-pill-default.svg";
 
 type AuthMode = "login" | "register";
 type RequestState = "idle" | "loading" | "success" | "error";
+type AttemptedAuthProvider = "google" | "microsoft-login" | "vipps";
+type AuthErrorState = ReturnType<typeof getAuthErrorPresentation> & { errorCode: string };
 
 type MagicLinkAuthScreenProps = {
   mode: AuthMode;
@@ -36,13 +44,20 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
   const [form, setForm] = useState(defaultForm);
   const [requestState, setRequestState] = useState<RequestState>("idle");
   const [message, setMessage] = useState<string | null>(null);
-  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(() => {
+  const [authError, setAuthError] = useState<AuthErrorState | null>(() => {
     if (typeof window === "undefined") {
       return null;
     }
 
     const errorCode = new URLSearchParams(window.location.search).get("error");
-    return errorCode ? getAuthErrorMessage(errorCode) : null;
+    if (!errorCode) {
+      return null;
+    }
+
+    return {
+      ...getAuthErrorPresentation(errorCode, readAttemptedProvider(document.cookie)),
+      errorCode,
+    };
   });
   const [providers, setProviders] = useState({
     google: authConfig.googleConfigured,
@@ -59,6 +74,21 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       trackFunnelEvent("registration_started");
     }
   }, [isRegister]);
+
+  useEffect(() => {
+    if (!authError) {
+      return;
+    }
+
+    document.cookie = createClearedAttemptedProviderCookie({
+      secure: window.location.protocol === "https:",
+    });
+    clearAuthErrorFromUrl();
+    trackFunnelEvent("login_failed", {
+      method: getAnalyticsLoginMethod(authError.provider),
+      error_category: getSafeErrorCategory(authError.errorCode),
+    });
+  }, [authError]);
 
   useEffect(() => {
     let isMounted = true;
@@ -86,7 +116,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
     event.preventDefault();
     setRequestState("loading");
     setMessage(null);
-    setAuthErrorMessage(null);
+    setAuthError(null);
 
     try {
       if (isRegister) {
@@ -135,7 +165,6 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       throw new Error(getAuthErrorMessage(result.error));
     }
 
-    trackFunnelEvent("login_completed", { method: "email_password" });
     window.location.href = result?.url ?? callbackUrl;
   }
 
@@ -148,17 +177,38 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       return;
     }
 
-    setAuthErrorMessage(null);
+    setAuthError(null);
     setOauthLoadingProvider(provider);
     const providerId = provider === "microsoft" ? microsoftLoginProviderId : provider;
-    signIn(providerId, { callbackUrl }).catch(() => {
-      setOauthLoadingProvider(null);
-      setAuthErrorMessage(
-        provider === "microsoft"
-          ? "Vi klarte ikke å logge deg inn med Microsoft. Prøv igjen."
-          : "Vi klarte ikke å starte innloggingen. Prøv igjen.",
-      );
+    const attemptedProvider = providerId as AttemptedAuthProvider;
+    document.cookie = createAttemptedProviderCookie(attemptedProvider, {
+      secure: window.location.protocol === "https:",
     });
+    trackFunnelEvent("login_attempted", { method: getAnalyticsLoginMethod(attemptedProvider) });
+    signIn(providerId, { callbackUrl }).catch(() => {
+      document.cookie = createClearedAttemptedProviderCookie({
+        secure: window.location.protocol === "https:",
+      });
+      setOauthLoadingProvider(null);
+      setAuthError({
+        ...getAuthErrorPresentation("OAuthCallback", attemptedProvider),
+        errorCode: "OAuthCallback",
+      });
+    });
+  }
+
+  function retryOAuth(provider: AttemptedAuthProvider | null) {
+    if (provider === "microsoft-login") {
+      startOAuth("microsoft");
+      return;
+    }
+
+    if (provider === "google" || provider === "vipps") {
+      startOAuth(provider);
+      return;
+    }
+
+    setAuthError(null);
   }
 
   return (
@@ -182,17 +232,17 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
               : "Logg inn med e-post og passord, eller fortsett med en tilgjengelig innloggingsmetode."}
           </p>
 
-          {authErrorMessage ? (
+          {authError ? (
             <div className="mt-4 rounded-xl bg-[#F5E6E9] px-4 py-3 text-sm font-semibold text-[#C8102E]">
-              <p>{authErrorMessage}</p>
-              {providers.google ? (
+              <p>{authError.message}</p>
+              {canRetryProvider(authError.provider, providers) || !authError.provider ? (
                 <button
                   className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#0D1B2A] ring-1 ring-[#F3C3CC] hover:ring-[#C8102E]/50"
                   disabled={Boolean(oauthLoadingProvider)}
-                  onClick={() => startOAuth("google")}
+                  onClick={() => retryOAuth(authError.provider)}
                   type="button"
                 >
-                  Prøv Google på nytt
+                  {authError.retryLabel}
                 </button>
               ) : null}
             </div>
@@ -362,20 +412,47 @@ async function safeReadJson(response: Response) {
 }
 
 function getAuthErrorMessage(errorCode: string) {
-  if (["OAuthAccountNotLinked", "AccessDenied", "OAuthCallback", "Callback", "Configuration"].includes(errorCode)) {
-    return getSafeAuthErrorMessage(errorCode);
+  return getAuthErrorPresentation(errorCode).message;
+}
+
+function getAnalyticsLoginMethod(provider: AttemptedAuthProvider | null) {
+  if (provider === "microsoft-login") {
+    return "microsoft";
   }
 
-  const messages: Record<string, string> = {
-    OAuthAccountNotLinked:
-      "Denne e-posten er allerede brukt med en annen innloggingsmetode. Logg inn med e-post/passord først, og koble Google fra innstillinger.",
-    EMAIL_NOT_VERIFIED: "E-posten din er ikke bekreftet ennå. Sjekk e-posten din før du logger inn.",
-    AccessDenied: "Innloggingen ble avvist. Prøv igjen eller bruk en annen innloggingsmetode.",
-    Callback: "Innloggingen kunne ikke fullføres. Prøv igjen, eller logg inn med e-post/passord.",
-    Configuration: "Innlogging er midlertidig utilgjengelig. Prøv igjen senere.",
-  };
+  return provider ?? "credentials";
+}
 
-  return messages[errorCode] ?? "Kunne ikke logge inn. Sjekk e-post, passord og at kontoen er verifisert.";
+function getSafeErrorCategory(errorCode: string) {
+  return [
+    "OAuthCallback",
+    "OAuthAccountNotLinked",
+    "AccessDenied",
+    "Configuration",
+    "Verification",
+    "CredentialsSignin",
+  ].includes(errorCode)
+    ? errorCode
+    : "authentication_failed";
+}
+
+function canRetryProvider(
+  provider: AttemptedAuthProvider | null,
+  providers: { google: boolean; microsoft: boolean; vipps: boolean },
+) {
+  if (provider === "microsoft-login") {
+    return providers.microsoft;
+  }
+
+  if (provider === "google") {
+    return providers.google;
+  }
+
+  if (provider === "vipps") {
+    return providers.vipps;
+  }
+
+  return false;
 }
 
 function getSafeCallbackUrl() {
@@ -390,6 +467,16 @@ function getSafeCallbackUrl() {
   }
 
   return callbackUrl;
+}
+
+function clearAuthErrorFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("error")) {
+    return;
+  }
+
+  url.searchParams.delete("error");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function GoogleIcon() {

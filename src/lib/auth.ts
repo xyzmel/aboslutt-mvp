@@ -21,6 +21,8 @@ import { validateEmailMagicLinkRequest } from "@/lib/beta";
 import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 import { trackServerFunnelEvent } from "@/lib/server-analytics";
+import { createSanitizedAuthAdapter } from "@/lib/auth-account-sanitizer.mjs";
+import { logger } from "@/lib/logger";
 
 type VippsProfile = {
   sub: string;
@@ -161,6 +163,11 @@ if (isMicrosoftLoginConfigured()) {
     },
     checks: ["pkce", "state", "nonce"],
     idToken: true,
+    // Microsoft returns extra token metadata that is not part of our Account
+    // schema. The adapter wrapper below persists only explicitly supported fields.
+    // The OIDC identity allows a retry to link an orphaned user created before a
+    // failed adapter write, without touching the separate Outlook mailbox account.
+    allowDangerousEmailAccountLinking: true,
     profile(profile: MicrosoftLoginProfile) {
       return {
         id: profile.sub,
@@ -203,7 +210,7 @@ if (isVippsConfigured()) {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: createSanitizedAuthAdapter(PrismaAdapter(prisma)),
   // OAuth account rows can contain access, refresh and ID tokens.
   // Never print provider account payloads or token values in logs.
   providers,
@@ -215,6 +222,23 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV !== "production" && process.env.NEXTAUTH_DEBUG === "true",
+  logger: {
+    error(code, metadata) {
+      logger.error("[auth:error]", {
+        code,
+        error: metadata instanceof Error ? metadata : metadata.error,
+      });
+    },
+    warn(code) {
+      logger.warn("[auth:warning]", { code });
+    },
+    debug(code) {
+      if (process.env.NODE_ENV !== "production") {
+        logger.info("[auth:debug]", { code });
+      }
+    },
+  },
   callbacks: {
     async jwt({ token, user, account }) {
       if (user?.id) {
@@ -262,12 +286,10 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, email, profile }) {
       if (account?.provider === "vipps" && user.id) {
         await updateVippsProfileFields(user.id, profile);
-        trackLoginCompleted(user.id, "vipps");
         return true;
       }
 
       if (account?.provider === "google" && user.id) {
-        trackLoginCompleted(user.id, "google");
         if (account.scope?.split(" ").includes("https://www.googleapis.com/auth/gmail.readonly")) {
           trackServerFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" }, user.id);
         }
@@ -275,17 +297,14 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (account?.provider === microsoftLoginProviderId && user.id) {
-        trackLoginCompleted(user.id, "microsoft");
         return true;
       }
 
       if (account?.provider === "credentials" && user.id) {
-        trackLoginCompleted(user.id, "email_password");
         return true;
       }
 
       if (account?.provider === "email" && !email?.verificationRequest && user.id) {
-        trackLoginCompleted(user.id, "email_magic_link");
         return true;
       }
 
@@ -302,6 +321,15 @@ export const authOptions: NextAuthOptions = {
       return result.allowed;
     },
   },
+  events: {
+    async signIn({ user, account }) {
+      if (!user.id) {
+        return;
+      }
+
+      trackLoginCompleted(user.id, getLoginMethod(account?.provider));
+    },
+  },
 };
 
 type MicrosoftLoginProfile = {
@@ -313,6 +341,18 @@ type MicrosoftLoginProfile = {
 
 function trackLoginCompleted(userId: string, method: string) {
   trackServerFunnelEvent("login_completed", { method }, userId);
+}
+
+function getLoginMethod(provider?: string | null) {
+  if (provider === microsoftLoginProviderId) {
+    return "microsoft";
+  }
+
+  if (provider === "google" || provider === "vipps") {
+    return provider;
+  }
+
+  return "credentials";
 }
 
 function getTokenId(token: JWT) {

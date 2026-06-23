@@ -10,6 +10,7 @@ import {
   resetAnalyticsIdentity,
   syncAnalyticsRoute,
 } from "@/lib/analytics";
+import { createClearedAttemptedProviderCookie } from "@/lib/auth-login-state.mjs";
 
 export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -33,6 +34,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     if (userId) {
       identifyAnalyticsUser(userId);
       Sentry.setUser({ id: userId });
+      document.cookie = createClearedAttemptedProviderCookie({
+        secure: window.location.protocol === "https:",
+      });
       previousUserId.current = userId;
       return;
     }

@@ -12,6 +12,7 @@
     "test:microsoft-import": "node --test scripts/test-microsoft-outlook-import.mjs",
     "test:analytics": "node --test scripts/test-analytics-privacy.mjs",
     "test:auth-providers": "node --test scripts/test-auth-provider-config.mjs",
+    "test:auth-account-linking": "node --test scripts/test-auth-account-linking.mjs",
     "test:billing-outlook-state": "node --test scripts/test-billing-outlook-state.mjs",
     "test:subscription-lifecycle": "node --test scripts/test-subscription-lifecycle.mjs",
     "check:text": "node scripts/check-text-encoding.mjs",

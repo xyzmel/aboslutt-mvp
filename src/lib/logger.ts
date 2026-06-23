@@ -1,8 +1,10 @@
 import * as Sentry from "@sentry/nextjs";
+import {
+  isSensitiveLogKey,
+  redactSensitiveText,
+} from "@/lib/sensitive-data-redaction.mjs";
 
 type LogMetadata = Record<string, unknown>;
-
-const sensitiveKeyPattern = /token|secret|password|authorization|cookie|database_url|access_token|refresh_token|id_token/i;
 
 export const logger = {
   info(message: string, metadata: LogMetadata = {}) {
@@ -22,14 +24,14 @@ export function sanitizeMetadata(metadata: LogMetadata): LogMetadata {
   return Object.fromEntries(
     Object.entries(metadata).map(([key, value]) => [
       key,
-      sensitiveKeyPattern.test(key) ? "[redacted]" : sanitizeValue(value),
+      isSensitiveLogKey(key) ? "[redacted]" : sanitizeValue(value),
     ]),
   );
 }
 
 function sanitizeValue(value: unknown): unknown {
   if (value instanceof Error) {
-    return { name: value.name, message: value.message };
+    return { name: value.name, message: redactSensitiveText(value.message) };
   }
 
   if (Array.isArray(value)) {
@@ -41,10 +43,10 @@ function sanitizeValue(value: unknown): unknown {
   }
 
   if (typeof value === "string" && value.length > 500) {
-    return `${value.slice(0, 500)}...`;
+    return `${redactSensitiveText(value.slice(0, 500))}...`;
   }
 
-  return value;
+  return typeof value === "string" ? redactSensitiveText(value) : value;
 }
 
 function captureLogError(message: string, metadata: LogMetadata) {
