@@ -11,6 +11,7 @@ import { getMicrosoftProviderName, isMicrosoftGraphConfigured } from "@/lib/micr
 import { sanitizeMicrosoftMailboxAddress } from "@/lib/microsoft-oauth-config.mjs";
 import { canUseEmailReminders, canUseMonthlySummary } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
+import { normalizeSettingsBillingState } from "@/lib/settings-billing-state.mjs";
 
 const gmailReadonlyScope = "https://www.googleapis.com/auth/gmail.readonly";
 
@@ -114,6 +115,7 @@ export default async function SettingsPage() {
       <AppHeader />
       <SettingsClient
         billingAgreement={billingAgreement}
+        billingState={normalizeSettingsBillingState({ plan: currentUser.plan, agreement: billingAgreement })}
         email={currentUser.email}
         emailRemindersAvailable={emailRemindersAvailable}
         emailRemindersEnabled={notificationPreferences.emailRemindersEnabled}

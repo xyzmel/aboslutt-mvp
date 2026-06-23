@@ -14,8 +14,36 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import type { EmailSubscriptionCandidate } from "@/lib/email-subscription-parser";
 import type { EnrichedImportCandidate } from "@/lib/import-candidates";
+import {
+  getOutlookDisplayState,
+  shouldApplyConnectionResponse,
+} from "@/lib/outlook-provider-state.mjs";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
 import type { BillingInterval, SubscriptionCategory } from "@/types/subscription";
+
+type MicrosoftImportState =
+  | "loading"
+  | "not_connected"
+  | "connecting"
+  | "connected"
+  | "scanning"
+  | "scan_failed"
+  | "error"
+  | "no_candidates"
+  | "review_results"
+  | "disconnected"
+  | "expired"
+  | "unavailable";
+
+type OutlookDisplayState =
+  | "loading"
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "scanning"
+  | "expired"
+  | "unavailable"
+  | "error";
 
 type CandidateDraft = {
   merchantName: string;
@@ -34,18 +62,7 @@ type PremiumGateState = {
   limit?: number | null;
 };
 
-type MicrosoftImportState =
-  | "not_connected"
-  | "connecting"
-  | "connected"
-  | "scanning"
-  | "scan_failed"
-  | "no_candidates"
-  | "review_results"
-  | "disconnected"
-  | "expired";
-
-type ProviderStatus = "disconnected" | "connecting" | "connected" | "scanning" | "expired" | "error";
+type ProviderStatus = OutlookDisplayState;
 
 type OutlookCandidate = {
   id: string;
@@ -104,7 +121,7 @@ export default function EmailImportPage() {
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
   const [microsoftEmail, setMicrosoftEmail] = useState<string | null>(null);
-  const [microsoftImportState, setMicrosoftImportState] = useState<MicrosoftImportState>("not_connected");
+  const [microsoftImportState, setMicrosoftImportState] = useState<MicrosoftImportState>("loading");
   const [microsoftMessage, setMicrosoftMessage] = useState<string | null>(null);
   const [microsoftMessagesChecked, setMicrosoftMessagesChecked] = useState<number | null>(null);
   const [microsoftCandidates, setMicrosoftCandidates] = useState<OutlookCandidate[]>([]);
@@ -116,6 +133,7 @@ export default function EmailImportPage() {
   const [premiumGate, setPremiumGate] = useState<PremiumGateState | null>(null);
   const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
   const lastToastKeyRef = useRef<string | null>(null);
+  const connectionRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -127,9 +145,15 @@ export default function EmailImportPage() {
       return;
     }
 
+    const requestId = connectionRequestIdRef.current + 1;
+    connectionRequestIdRef.current = requestId;
+    const abortController = new AbortController();
     async function loadConnectionStatus() {
-      const response = await fetch("/api/connections", { cache: "no-store" });
+      const response = await fetch("/api/connections", { cache: "no-store", signal: abortController.signal });
       if (!response.ok) {
+        if (shouldApplyConnectionResponse(requestId, connectionRequestIdRef.current)) {
+          setMicrosoftImportState("error");
+        }
         return;
       }
       const result = (await response.json()) as {
@@ -142,6 +166,10 @@ export default function EmailImportPage() {
         microsoftExpired?: boolean;
         microsoftStatus?: ProviderStatus;
       };
+      if (!shouldApplyConnectionResponse(requestId, connectionRequestIdRef.current)) {
+        return;
+      }
+
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
@@ -151,6 +179,7 @@ export default function EmailImportPage() {
       setMicrosoftConnected(Boolean(result.microsoftConnected));
       setMicrosoftConfigured(Boolean(result.microsoftConfigured));
       setMicrosoftEmail(sanitizeDisplayEmail(result.microsoftEmail));
+      setMicrosoftMessage(null);
       const microsoftExpired = Boolean(result.microsoftExpired);
       if (microsoftExpired) {
         setMicrosoftConnected(false);
@@ -181,7 +210,19 @@ export default function EmailImportPage() {
       }
     }
 
-    loadConnectionStatus();
+    loadConnectionStatus().catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      if (shouldApplyConnectionResponse(requestId, connectionRequestIdRef.current)) {
+        setMicrosoftImportState("error");
+      }
+    });
+
+    return () => {
+      abortController.abort();
+    };
   }, [router, searchParams, showToast, status]);
 
   const visibleCandidates = useMemo(
@@ -548,7 +589,7 @@ export default function EmailImportPage() {
   }
 
   const gmailStatus: ProviderStatus = isScanningGmail ? "scanning" : gmailScopeConnected ? "connected" : "disconnected";
-  const outlookStatus = getOutlookProviderStatus(microsoftImportState, microsoftConnected);
+  const outlookStatus = getOutlookProviderStatus(microsoftImportState, microsoftConnected, microsoftConfigured);
   const outlookEmail = outlookStatus === "connected" ? sanitizeDisplayEmail(microsoftEmail) : null;
   const outlookFeedback =
     outlookStatus === "connected"
@@ -557,7 +598,13 @@ export default function EmailImportPage() {
         ? "Tilkoblingen til Outlook har utløpt."
         : outlookStatus === "error"
           ? "Vi klarte ikke å skanne e-posten. Koble til på nytt eller prøv igjen."
-          : microsoftMessage;
+          : outlookStatus === "unavailable"
+            ? "Outlook er midlertidig utilgjengelig."
+            : outlookStatus === "disconnected"
+              ? "Outlook er ikke koblet til."
+              : outlookStatus === "loading"
+                ? null
+                : microsoftMessage;
 
   return (
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] text-[#0D1B2A]">
@@ -669,6 +716,8 @@ export default function EmailImportPage() {
                   >
                     Se Premium
                   </button>
+                ) : outlookStatus === "loading" ? (
+                  <div className="h-11 w-40 animate-pulse rounded-xl bg-[#E6EDF5]" aria-hidden="true" />
                 ) : microsoftConfigured ? (
                   <a
                     aria-disabled={microsoftImportState === "connecting"}
@@ -682,10 +731,18 @@ export default function EmailImportPage() {
                         ? "Koble til på nytt"
                         : "Koble til Outlook"}
                   </a>
-                ) : (
+                ) : outlookStatus === "unavailable" ? (
                   <p className="rounded-xl bg-[#F8F1E8] px-4 py-3 text-sm font-bold text-[#8A4B13]">
                     Outlook er midlertidig utilgjengelig.
                   </p>
+                ) : (
+                  <a
+                    className="inline-flex justify-center rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27]"
+                    href="/api/import/microsoft/connect"
+                    onClick={connectMicrosoft}
+                  >
+                    Koble til Outlook
+                  </a>
                 )
               }
               connectedEmail={outlookEmail}
@@ -706,9 +763,13 @@ export default function EmailImportPage() {
                 ) : null
               }
               status={
-                outlookStatus === "expired"
-                  ? "Må kobles til på nytt"
-                  : getProviderStatusLabel(outlookStatus)
+                outlookStatus === "loading"
+                  ? ""
+                  : outlookStatus === "expired"
+                    ? "Må kobles til på nytt"
+                    : outlookStatus === "unavailable"
+                      ? "Utilgjengelig"
+                      : getProviderStatusLabel(outlookStatus)
               }
               statusTone={getProviderStatusTone(outlookStatus)}
             />
@@ -901,9 +962,13 @@ function ProviderCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-extrabold tracking-tight">{name}</h3>
-            <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClass}`}>
-              {status}
-            </span>
+            {status ? (
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClass}`}>
+                {status}
+              </span>
+            ) : (
+              <span className="h-6 w-24 animate-pulse rounded-full bg-[#E6EDF5]" aria-hidden="true" />
+            )}
           </div>
           {connectedEmail ? (
             <p className="mt-1 truncate text-sm font-semibold text-[#5F6F82]" title={connectedEmail}>
@@ -1230,37 +1295,19 @@ function getMicrosoftConnectionMessage(code: string) {
   return "Vi klarte ikke å koble til Outlook. Prøv igjen.";
 }
 
-function getOutlookProviderStatus(state: MicrosoftImportState, connected: boolean): ProviderStatus {
-  if (state === "connecting") {
-    return "connecting";
-  }
-
-  if (state === "scanning") {
-    return "scanning";
-  }
-
-  if (state === "expired") {
-    return "expired";
-  }
-
-  if (state === "scan_failed") {
-    return "error";
-  }
-
-  if (connected && (state === "connected" || state === "review_results" || state === "no_candidates")) {
-    return "connected";
-  }
-
-  return "disconnected";
+function getOutlookProviderStatus(state: MicrosoftImportState, connected: boolean, configured: boolean): ProviderStatus {
+  return getOutlookDisplayState({ state, connected, configured });
 }
 
 function getProviderStatusLabel(status: ProviderStatus) {
   const labels: Record<ProviderStatus, string> = {
+    loading: "",
     disconnected: "Ikke tilkoblet",
     connecting: "Kobler til",
     connected: "Tilkoblet",
     scanning: "Skanner",
     expired: "Må kobles til på nytt",
+    unavailable: "Utilgjengelig",
     error: "Feil",
   };
 
@@ -1272,7 +1319,7 @@ function getProviderStatusTone(status: ProviderStatus): "success" | "warning" | 
     return "success";
   }
 
-  if (status === "expired") {
+  if (status === "expired" || status === "unavailable") {
     return "warning";
   }
 

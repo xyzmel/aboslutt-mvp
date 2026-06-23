@@ -20,10 +20,23 @@ type SettingsBillingAgreement = {
   expiresAt: string | null;
 };
 
+type NormalizedSettingsBillingState = {
+  currentPlan: string;
+  entitlementActive: boolean;
+  subscriptionStatus: string;
+  price: number | null;
+  currency: string | null;
+  billingInterval: string | null;
+  activatedAt: string | null;
+  expiresAt: string | null;
+  historicalAgreement: SettingsBillingAgreement | null;
+};
+
 type SettingsClientProps = {
   name: string | null;
   email: string | null;
   billingAgreement: SettingsBillingAgreement | null;
+  billingState: NormalizedSettingsBillingState;
   googleConnected: boolean;
   gmailScopeConnected: boolean;
   googleReconnectRequired: boolean;
@@ -58,6 +71,7 @@ export function SettingsClient({
   name,
   email,
   billingAgreement,
+  billingState,
   googleConnected,
   googleReconnectRequired,
   isAdmin,
@@ -78,6 +92,7 @@ export function SettingsClient({
   const [isWorking, setIsWorking] = useState(false);
   const [isDisconnectingOutlook, setIsDisconnectingOutlook] = useState(false);
   const [billingStatus, setBillingStatus] = useState(billingAgreement?.status ?? null);
+  const [normalizedBillingState, setNormalizedBillingState] = useState(billingState);
   const [isCancellingBilling, setIsCancellingBilling] = useState(false);
   const [premiumDialogReason, setPremiumDialogReason] = useState<string | null>(null);
   const [notificationForm, setNotificationForm] = useState<NotificationForm>({
@@ -233,6 +248,10 @@ export function SettingsClient({
       }
 
       setBillingStatus(result.status ?? "cancellation_pending");
+      setNormalizedBillingState((current) => ({
+        ...current,
+        subscriptionStatus: "cancellation_scheduled",
+      }));
       setMessage("Betalingsavtalen er sendt til avslutning.");
       showToast({
         title: "Avtale sendt til avslutning",
@@ -265,6 +284,7 @@ export function SettingsClient({
       <div className="mt-6 grid gap-5">
         <BillingSection
           agreement={billingAgreement ? { ...billingAgreement, status: billingStatus ?? billingAgreement.status } : null}
+          billingState={normalizedBillingState}
           isAdmin={isAdmin}
           isCancelling={isCancellingBilling}
           onCancel={cancelBillingAgreement}
@@ -622,6 +642,7 @@ function ToggleRow({
 
 function BillingSection({
   agreement,
+  billingState,
   isAdmin,
   isCancelling,
   onCancel,
@@ -630,6 +651,7 @@ function BillingSection({
   plan,
 }: {
   agreement: SettingsBillingAgreement | null;
+  billingState: NormalizedSettingsBillingState;
   isAdmin: boolean;
   isCancelling: boolean;
   onCancel: () => void;
@@ -637,9 +659,10 @@ function BillingSection({
   paymentsConfigured: boolean;
   plan: string;
 }) {
-  const isPaidPlan = plan === "premium" || plan === "beta";
-  const showPricingLink = plan === "free" && !isAdmin;
-  const canCancel = agreement?.status === "active";
+  const isPaidPlan = billingState.currentPlan === "premium";
+  const planLabel = formatNormalizedPlan(billingState.currentPlan, isAdmin, plan);
+  const showPricingLink = billingState.currentPlan === "free" && !isAdmin;
+  const canCancel = isPaidPlan && agreement?.status === "active";
 
   return (
     <SectionCard
@@ -648,19 +671,23 @@ function BillingSection({
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <dl className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <BillingDetail label="Plan" value={formatPlan(plan)} />
-          <BillingDetail label="Intervall" value={agreement ? formatBillingInterval(agreement.interval) : "Ingen avtale"} />
-          <BillingDetail label="Pris" value={agreement ? `${agreement.priceNok} ${agreement.currency}` : "-"} />
-          <BillingDetail label="Status" value={agreement ? formatBillingStatus(agreement.status) : "Ingen betalingsavtale"} />
-          <BillingDetail label="Aktivert" value={agreement?.activatedAt ? formatDate(agreement.activatedAt) : "Ikke aktivert"} />
+          <BillingDetail label="Plan" value={planLabel} />
+          <BillingDetail label="Intervall" value={formatNormalizedBillingInterval(billingState.billingInterval)} />
+          <BillingDetail label="Pris" value={formatNormalizedPrice(billingState)} />
+          <BillingDetail label="Status" value={formatNormalizedBillingStatus(billingState.subscriptionStatus)} />
+          <BillingDetail label="Tilgang" value={formatAccessState(billingState)} />
         </dl>
-        <StatusBadge label={formatPlan(plan)} tone={isPaidPlan || isAdmin ? "success" : "neutral"} />
+        <StatusBadge label={planLabel} tone={isPaidPlan || isAdmin ? "success" : "neutral"} />
       </div>
 
-      {agreement?.expiresAt ? (
+      {isPaidPlan && billingState.expiresAt ? (
         <p className="mt-4 rounded-xl bg-[#F7F9FC] px-4 py-3 text-sm font-semibold text-[#5F6F82]">
-          Tilgang er registrert til {formatDate(agreement.expiresAt)}.
+          Tilgang er registrert til {formatDate(billingState.expiresAt)}.
         </p>
+      ) : null}
+
+      {billingState.currentPlan === "free" && billingState.historicalAgreement ? (
+        <PreviousBillingAgreement agreement={billingState.historicalAgreement} />
       ) : null}
 
       <p className="mt-4 rounded-xl bg-[#F7F9FC] px-4 py-3 text-sm leading-6 text-[#5F6F82]">
@@ -697,7 +724,7 @@ function BillingSection({
           <div>
             <p className="text-sm font-extrabold text-[#0D1B2A]">Du bruker gratisplanen</p>
             <p className="mt-1 text-sm leading-6 text-[#5F6F82]">
-              Premium gir automatisk skanning, varsler, månedlig oppsummering og oppsigelseshjelp.
+              Du kan legge inn og holde oversikt over abonnementene dine gratis.
             </p>
           </div>
           <button className={`${primaryButtonClass} w-full sm:w-auto`} onClick={onUpgrade} type="button">
@@ -720,6 +747,23 @@ function BillingDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PreviousBillingAgreement({ agreement }: { agreement: SettingsBillingAgreement }) {
+  const endedAt = agreement.expiresAt ?? agreement.cancelledAt;
+  const description =
+    agreement.status === "expired" && endedAt
+      ? `Premium utløp ${formatDate(endedAt)}.`
+      : agreement.status === "cancelled" && endedAt
+        ? `Premium ble avsluttet ${formatDate(endedAt)}.`
+        : `Siste Premium-status: ${formatBillingStatus(agreement.status)}.`;
+
+  return (
+    <div className="mt-4 rounded-xl bg-[#F7F9FC] px-4 py-3 text-sm text-[#5F6F82] ring-1 ring-[#E6EDF5]">
+      <p className="font-extrabold text-[#0D1B2A]">Tidligere abonnement</p>
+      <p className="mt-1 font-semibold">{description}</p>
+    </div>
+  );
+}
+
 function StatusBadge({ label, tone }: { label: string; tone: "success" | "warning" | "neutral" }) {
   const toneClass = {
     success: "bg-[#EAF8EF] text-[#1F7A3A] ring-[#BFE8CB]",
@@ -734,26 +778,61 @@ function StatusBadge({ label, tone }: { label: string; tone: "success" | "warnin
   );
 }
 
-function formatPlan(plan: string) {
-  const labels: Record<string, string> = {
-    free: "Gratis",
-    beta: "Premium",
-    premium: "Premium",
-    admin: "Admin",
-  };
+function formatNormalizedPlan(currentPlan: string, isAdmin: boolean, rawPlan: string) {
+  if (isAdmin && rawPlan === "admin") {
+    return "Admin";
+  }
 
-  return labels[plan] ?? plan;
+  return currentPlan === "premium" ? "Premium" : "Gratis";
 }
 
-function formatBillingInterval(interval: string) {
+function formatNormalizedBillingInterval(interval: string | null) {
+  if (interval === "monthly") {
+    return "Månedlig";
+  }
+
+  if (interval === "yearly") {
+    return "Årlig";
+  }
+
+  return "Ingen betaling";
+}
+
+function formatNormalizedPrice(state: NormalizedSettingsBillingState) {
+  if (state.currentPlan === "free") {
+    return "0 kr";
+  }
+
+  if (typeof state.price === "number" && state.currency) {
+    return `${state.price} ${state.currency}`;
+  }
+
+  return "-";
+}
+
+function formatNormalizedBillingStatus(status: string) {
   const labels: Record<string, string> = {
-    month: "Månedlig",
-    monthly: "Månedlig",
-    year: "Årlig",
-    yearly: "Årlig",
+    active: "Aktiv",
+    pending: "Venter på godkjenning",
+    cancellation_scheduled: "Avslutning registrert",
+    cancelled: "Avsluttet",
+    expired: "Utløpt",
+    none: "Aktiv",
   };
 
-  return labels[interval] ?? interval;
+  return labels[status];
+}
+
+function formatAccessState(state: NormalizedSettingsBillingState) {
+  if (state.currentPlan === "free") {
+    return "Gratisplan aktiv";
+  }
+
+  if (state.activatedAt) {
+    return `Aktivert ${formatDate(state.activatedAt)}`;
+  }
+
+  return "Premium aktiv";
 }
 
 function formatBillingStatus(status: string) {

@@ -11,6 +11,7 @@
     "test:launch": "node --test scripts/test-launch-readiness.mjs",
     "test:microsoft-import": "node --test scripts/test-microsoft-outlook-import.mjs",
     "test:analytics": "node --test scripts/test-analytics-privacy.mjs",
+    "test:billing-outlook-state": "node --test scripts/test-billing-outlook-state.mjs",
     "check:text": "node scripts/check-text-encoding.mjs",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
