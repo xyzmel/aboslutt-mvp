@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
+import { resetAnalyticsIdentity } from "@/lib/analytics";
 
 export type NavigationLink = {
   href: string;
@@ -66,7 +67,10 @@ export function MobileMenu({ links, isAuthenticated, userLabel, isAdmin = false 
             {isAuthenticated ? (
               <button
                 className="rounded-xl px-3 py-3 text-left font-semibold text-[#C8102E] hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]"
-                onClick={() => signOut({ callbackUrl: "/login" })}
+                onClick={() => {
+                  resetAnalyticsIdentity();
+                  signOut({ callbackUrl: "/login" });
+                }}
                 type="button"
               >
                 Logg ut

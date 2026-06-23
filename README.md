@@ -42,6 +42,21 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GMAIL_IMPORT_DEBUG=false
 
+# PostHog, Sentry og Vercel Speed Insights.
+NEXT_PUBLIC_POSTHOG_KEY=
+NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
+POSTHOG_PROJECT_API_KEY=
+POSTHOG_HOST=https://eu.i.posthog.com
+NEXT_PUBLIC_ENABLE_ANALYTICS_LOCAL=false
+NEXT_PUBLIC_ANALYTICS_CONSENT_REQUIRED=false
+NEXT_PUBLIC_SENTRY_DSN=
+SENTRY_DSN=
+SENTRY_ORG=
+SENTRY_PROJECT=
+SENTRY_AUTH_TOKEN=
+SENTRY_RELEASE=
+NEXT_PUBLIC_SENTRY_RELEASE=
+
 # Microsoft Outlook import. Authorization Code Flow med delegated Graph scopes.
 MICROSOFT_CLIENT_ID=
 MICROSOFT_CLIENT_SECRET=
@@ -62,6 +77,16 @@ VIPPS_WELL_KNOWN_URL=
 Ingen ekte hemmeligheter skal committes. `.env.local` skal ikke overskrives av oppsettet.
 
 Viktig: Etter bytte til `provider = "postgresql"` i `prisma/schema.prisma` skal du ikke bruke `DATABASE_URL="file:./dev.db"`. Bruk en Postgres URL som starter med `postgresql://` eller `postgres://`.
+
+## Analytics og feilovervaking
+
+PostHog brukes for produksjonsanalyse med EU-endepunktet `https://eu.i.posthog.com`. Klienten lastes bare i produksjon, eller lokalt når `NEXT_PUBLIC_ENABLE_ANALYTICS_LOCAL=true`. Brukeridentifikasjon skjer kun med intern Aboslutt user ID. Analytics-helperen i `src/lib/analytics.ts` tillater bare trygge egenskaper som `provider`, `result`, `candidate_count`, `imported_count`, `billing_interval`, `plan`, `route` og `error_category`.
+
+Ikke send navn, e-postadresser, telefonnummer, e-postinnhold, kvitteringstekst, emnefelt, leverandørnavn, betalingsreferanser, Vipps-identifikatorer, tokens eller secrets. Sensitive ruter som importgjennomgang, betaling, innlogging, registrering, passordreset og innstillinger blokkerer session replay.
+
+Sentry brukes for klient-, server- og edge-feil. Sett `NEXT_PUBLIC_SENTRY_DSN` og `SENTRY_DSN`, og sett `SENTRY_ORG`, `SENTRY_PROJECT` og `SENTRY_AUTH_TOKEN` i Vercel når production source maps skal lastes opp. Sentry-konfigurasjonen fjerner cookies, autorisasjonsheadere, tokens, secrets, e-postinnhold og rå provider-responser før innsending.
+
+Vercel Speed Insights lastes bare i deployede miljøer gjennom App Router-integrasjonen.
 
 ## Sider
 
@@ -848,7 +873,8 @@ Trygg kansellering og downgrade:
 
 ## Public production launch checklist
 
-- Funnel analytics uses the provider-agnostic helper in `src/lib/analytics.ts`. Set `NEXT_PUBLIC_ANALYTICS_ENDPOINT` later to forward sanitized client events to a production analytics provider; do not send email, phone, names, payment references, Vipps identifiers, subscription names, secrets or tokens.
+- Funnel analytics uses PostHog through the typed helper in `src/lib/analytics.ts` and the server helper in `src/lib/server-analytics.ts`. Verify `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`, `POSTHOG_PROJECT_API_KEY`, `POSTHOG_HOST`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` and Vercel Speed Insights before launch.
+- Verify Sentry source map upload in production deploys and confirm no cookies, authorization headers, tokens, raw provider responses, payment references, mailbox content or subscription names are captured.
 - Production environment variables are verified in Vercel, including auth, SMTP, database, Vipps Recurring and `NEXT_PUBLIC_SITE_URL`.
 - Database migrations are applied with `npm run prisma:deploy`.
 - Vipps webhook registration is verified for `https://www.aboslutt.no/api/billing/vipps/webhook`.

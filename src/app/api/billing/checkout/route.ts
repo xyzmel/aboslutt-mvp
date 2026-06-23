@@ -164,7 +164,7 @@ export async function POST(request: Request) {
   } catch (error) {
     trackServerFunnelEvent("checkout_failed", {
       plan: plan.id,
-      reason: error instanceof VippsRecurringError ? error.code : "INTERNAL_ERROR",
+      error_category: error instanceof VippsRecurringError ? error.code : "INTERNAL_ERROR",
     });
 
     await prisma.billingAgreement.update({

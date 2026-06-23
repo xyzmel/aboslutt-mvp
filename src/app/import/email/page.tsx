@@ -11,6 +11,7 @@ import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { useToast } from "@/components/ui/ToastProvider";
+import { trackFunnelEvent } from "@/lib/analytics";
 import type { EmailSubscriptionCandidate } from "@/lib/email-subscription-parser";
 import type { EnrichedImportCandidate } from "@/lib/import-candidates";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
@@ -144,6 +145,9 @@ export default function EmailImportPage() {
       setGmailConnected(result.googleConnected);
       setGmailScopeConnected(result.gmailScopeConnected);
       setGmailScanAvailable(result.gmailScanAvailable ?? true);
+      if (result.gmailScopeConnected) {
+        trackFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" });
+      }
       setMicrosoftConnected(Boolean(result.microsoftConnected));
       setMicrosoftConfigured(Boolean(result.microsoftConfigured));
       setMicrosoftEmail(sanitizeDisplayEmail(result.microsoftEmail));
@@ -161,6 +165,7 @@ export default function EmailImportPage() {
           setMicrosoftConnected(true);
           setMicrosoftImportState("connected");
           setMicrosoftMessage("Outlook er koblet til og klar for skanning.");
+          trackFunnelEvent("email_provider_connected", { provider: "outlook", result: "success" });
         }
         return;
       }
@@ -192,6 +197,7 @@ export default function EmailImportPage() {
     event.preventDefault();
     setIsParsing(true);
     resetResults();
+    trackFunnelEvent("email_scan_started", { route: "/import/email", source: "manual_paste" });
 
     try {
       const response = await fetch("/api/import/email", {
@@ -206,12 +212,23 @@ export default function EmailImportPage() {
       }
 
       setCandidates(result.candidates);
+      trackFunnelEvent("email_scan_completed", {
+        result: "success",
+        route: "/import/email",
+        source: "manual_paste",
+        candidate_count: result.candidates.length,
+      });
 
       if (result.candidates.length === 0) {
         const message = "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.";
         setErrorMessage(message);
         showToast({ title: "Ingen funn", message, tone: "info" });
       } else {
+        trackFunnelEvent("import_candidates_found", {
+          route: "/import/email",
+          source: "manual_paste",
+          candidate_count: result.candidates.length,
+        });
         showToast({
           title: "Forslag funnet",
           message: `${result.candidates.length} mulige abonnementer er klare for gjennomgang.`,
@@ -220,6 +237,12 @@ export default function EmailImportPage() {
       }
     } catch {
       setCandidates([]);
+      trackFunnelEvent("email_scan_failed", {
+        result: "failed",
+        route: "/import/email",
+        source: "manual_paste",
+        error_category: "manual_import",
+      });
       const message = "Kunne ikke lese e-posten akkurat nå.";
       setErrorMessage(message);
       showToast({ title: "Import feilet", message, tone: "error" });
@@ -231,6 +254,7 @@ export default function EmailImportPage() {
   async function scanGmail() {
     setIsScanningGmail(true);
     resetResults();
+    trackFunnelEvent("email_scan_started", { provider: "gmail", route: "/import/email" });
 
     try {
       const response = await fetch("/api/import/gmail", { method: "POST" });
@@ -242,12 +266,21 @@ export default function EmailImportPage() {
 
       setCandidates(result.candidates);
       setScannedMessages(result.scannedMessages);
+      trackFunnelEvent("email_scan_completed", {
+        provider: "gmail",
+        result: "success",
+        candidate_count: result.candidates.length,
+      });
 
       if (result.candidates.length === 0) {
         const message = "Fant ingen sikre abonnementer. Prøv å lime inn en kvittering eller legg til manuelt.";
         setErrorMessage(message);
         showToast({ title: "Ingen funn", message, tone: "info" });
       } else {
+        trackFunnelEvent("import_candidates_found", {
+          provider: "gmail",
+          candidate_count: result.candidates.length,
+        });
         showToast({
           title: "Gmail er skannet",
           message: `${result.candidates.length} forslag er klare for gjennomgang.`,
@@ -256,6 +289,7 @@ export default function EmailImportPage() {
       }
     } catch {
       setCandidates([]);
+      trackFunnelEvent("email_scan_failed", { provider: "gmail", result: "failed", error_category: "gmail_scan" });
       const message = "Kunne ikke skanne Gmail akkurat nå.";
       setErrorMessage(message);
       showToast({ title: "Skanning feilet", message, tone: "error" });
@@ -281,6 +315,7 @@ export default function EmailImportPage() {
     setMicrosoftMessagesChecked(null);
     setMicrosoftScanId(null);
     setMicrosoftCandidates([]);
+    trackFunnelEvent("email_scan_started", { provider: "outlook", route: "/import/email" });
 
     try {
       const response = await fetch("/api/import/microsoft/scan", { method: "POST" });
@@ -299,6 +334,7 @@ export default function EmailImportPage() {
         const code = result.error ?? "SCAN_FAILED";
 
         if (code === "NOT_CONNECTED") {
+          trackFunnelEvent("email_scan_failed", { provider: "outlook", result: "failed", error_category: "not_connected" });
           setMicrosoftConnected(false);
           setMicrosoftImportState("not_connected");
           setMicrosoftEmail(null);
@@ -307,6 +343,7 @@ export default function EmailImportPage() {
         }
 
         if (code === "CONNECTION_EXPIRED" || code === "RECONNECT_REQUIRED" || code === "GRAPH_UNAUTHORIZED") {
+          trackFunnelEvent("email_scan_failed", { provider: "outlook", result: "failed", error_category: "expired" });
           setMicrosoftConnected(false);
           setMicrosoftImportState("expired");
           setMicrosoftEmail(null);
@@ -322,6 +359,17 @@ export default function EmailImportPage() {
       setMicrosoftScanId(result.scanId ?? null);
       setMicrosoftMessagesChecked(result.messagesChecked ?? 0);
       setMicrosoftCandidates(candidates);
+      trackFunnelEvent("email_scan_completed", {
+        provider: "outlook",
+        result: "success",
+        candidate_count: candidates.length,
+      });
+      if (candidates.length > 0) {
+        trackFunnelEvent("import_candidates_found", {
+          provider: "outlook",
+          candidate_count: candidates.length,
+        });
+      }
       setMicrosoftMessage(result.message ?? "Outlook-skanningen er fullført.");
       showImportToast("outlook-scan-success", candidates.length > 0 ? "Outlook-forslag funnet" : "Ingen sikre Outlook-funn",
         candidates.length > 0
@@ -329,6 +377,7 @@ export default function EmailImportPage() {
           : "Vi fant ingen sikre abonnementer i denne skanningen.",
         candidates.length > 0 ? "success" : "info");
     } catch {
+      trackFunnelEvent("email_scan_failed", { provider: "outlook", result: "failed", error_category: "outlook_scan" });
       setMicrosoftImportState("scan_failed");
       setMicrosoftScanId(null);
       setMicrosoftMessage("Vi klarte ikke å skanne e-posten. Koble til på nytt eller prøv igjen.");
@@ -351,6 +400,7 @@ export default function EmailImportPage() {
       setMicrosoftScanId(null);
       setMicrosoftMessage("Microsoft er koblet fra. Outlook-tilgangen er fjernet.");
       setMicrosoftCandidates([]);
+      trackFunnelEvent("email_provider_disconnected", { provider: "outlook", result: "success" });
       showToast({
         title: "Microsoft er koblet fra",
         message: "Du kan koble til igjen når du vil.",
@@ -976,6 +1026,11 @@ function MicrosoftImportPanel({
           ]),
         ),
       );
+      trackFunnelEvent("subscriptions_imported", {
+        provider: "outlook",
+        result: response.ok ? "success" : "failed",
+        imported_count: (result.results ?? []).filter((item) => item.ok).length,
+      });
 
       showToast({
         title: response.ok ? "Outlook-import behandlet" : "Import feilet",

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { resetAnalyticsIdentity } from "@/lib/analytics";
 
 type UserMenuProps = {
   name?: string | null;
@@ -47,7 +48,10 @@ export function UserMenu({ name, email, plan, isAdmin = false }: UserMenuProps) 
           </Link>
           <button
             className="rounded-xl px-3 py-2 text-left font-semibold text-[#C8102E] hover:bg-[#F5E6E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => {
+              resetAnalyticsIdentity();
+              signOut({ callbackUrl: "/login" });
+            }}
             type="button"
           >
             Logg ut

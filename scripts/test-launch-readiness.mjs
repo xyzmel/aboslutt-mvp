@@ -10,6 +10,7 @@ async function source(path) {
 
 test("funnel analytics events are implemented without sensitive properties", async () => {
   const analytics = await source("src/lib/analytics.ts");
+  const analyticsPrivacy = await source("src/lib/analytics-privacy.mjs");
   const dashboard = await source("src/components/dashboard/DashboardClient.tsx");
   const checkout = await source("src/components/billing/CheckoutButton.tsx");
   const payment = await source("src/components/billing/PaymentStatusPoller.tsx");
@@ -29,9 +30,12 @@ test("funnel analytics events are implemented without sensitive properties", asy
     assert.match(`${analytics}\n${dashboard}\n${checkout}\n${payment}`, new RegExp(eventName));
   }
 
-  assert.match(analytics, /blockedPropertyPattern/);
-  assert.match(analytics, /email\|phone\|name\|reference\|agreement\|charge\|vipps\|token\|secret/);
-  assert.doesNotMatch(dashboard, /subscription\.name.*trackFunnelEvent/s);
+  assert.match(analyticsPrivacy, /sensitiveKeyPattern/);
+  assert.match(analyticsPrivacy, /email\|phone\|name\|subject\|merchant\|receipt\|mailbox/);
+  assert.match(analyticsPrivacy, /reference\|agreement\|charge\|vipps\|token\|secret/);
+  assert.doesNotMatch(dashboard, /trackFunnelEvent\("[^"]+",\s*\{\s*name:/);
+  assert.doesNotMatch(dashboard, /trackFunnelEvent\("[^"]+",\s*\{\s*subscriptionName:/);
+  assert.doesNotMatch(dashboard, /trackFunnelEvent\("[^"]+",\s*\{[^}]*subscription\.name/);
   assert.doesNotMatch(checkout, /reference|providerAgreementId|providerChargeId/);
 });
 

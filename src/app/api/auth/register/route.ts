@@ -3,6 +3,7 @@ import { createEmailVerificationToken, sendEmailVerification } from "@/lib/email
 import { hashPassword, validatePassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 import { rateLimitResponseIfNeeded } from "@/lib/rate-limit";
+import { trackServerFunnelEvent } from "@/lib/server-analytics";
 
 type RegisterResponse = {
   ok: boolean;
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
       to: email,
       token: verificationToken.token,
     }).catch(() => ({ sent: false }));
+    trackServerFunnelEvent("account_created", { method: "email_password" }, user.id);
 
     return NextResponse.json(
       {

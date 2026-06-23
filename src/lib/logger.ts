@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 type LogMetadata = Record<string, unknown>;
 
 const sensitiveKeyPattern = /token|secret|password|authorization|cookie|database_url|access_token|refresh_token|id_token/i;
@@ -10,7 +12,9 @@ export const logger = {
     console.warn(message, sanitizeMetadata(metadata));
   },
   error(message: string, metadata: LogMetadata = {}) {
-    console.error(message, sanitizeMetadata(metadata));
+    const sanitized = sanitizeMetadata(metadata);
+    console.error(message, sanitized);
+    captureLogError(message, sanitized);
   },
 };
 
@@ -41,4 +45,21 @@ function sanitizeValue(value: unknown): unknown {
   }
 
   return value;
+}
+
+function captureLogError(message: string, metadata: LogMetadata) {
+  try {
+    Sentry.withScope((scope) => {
+      for (const [key, value] of Object.entries(metadata)) {
+        if (["route", "operation", "provider", "plan"].includes(key) && typeof value === "string") {
+          scope.setTag(key, value);
+        }
+      }
+      scope.setContext("metadata", metadata);
+      const error = metadata.error instanceof Error ? metadata.error : new Error(message);
+      Sentry.captureException(error);
+    });
+  } catch {
+    // Error monitoring must never break application flow.
+  }
 }

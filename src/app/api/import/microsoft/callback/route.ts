@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { handleMicrosoftOAuthCallback, MicrosoftGraphError } from "@/lib/microsoft-graph";
 import { logger } from "@/lib/logger";
+import { trackServerFunnelEvent } from "@/lib/server-analytics";
 
 export async function GET(request: Request) {
   const currentUser = await getCurrentUser();
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
       state: url.searchParams.get("state"),
       userId: currentUser.id,
     });
+    trackServerFunnelEvent("email_provider_connected", { provider: "outlook", result: "success" }, currentUser.id);
     redirectUrl.searchParams.set("microsoft", "connected");
     return NextResponse.redirect(redirectUrl);
   } catch (callbackError) {

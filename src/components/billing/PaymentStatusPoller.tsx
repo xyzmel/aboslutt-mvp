@@ -108,6 +108,7 @@ export function PaymentStatusPoller({ returnContext = "thanks" }: { returnContex
 
     if (status === "active") {
       trackedFinalStatus.current = status;
+      trackFunnelEvent("checkout_completed", { result: "success" });
       trackFunnelEvent("premium_activated", { source: "payment_status_poll" });
       showToast({
         title: "Premium er aktivert",
@@ -185,12 +186,14 @@ export function PaymentStatusPoller({ returnContext = "thanks" }: { returnContex
           </LoadingButton>
         ) : null}
 
-        <Link
-          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
-          href="/dashboard"
-        >
-          Til oversikt
-        </Link>
+        {status !== "active" ? (
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
+            href="/dashboard"
+          >
+            Til oversikt
+          </Link>
+        ) : null}
 
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"

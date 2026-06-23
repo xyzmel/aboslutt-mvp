@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
+import { SpeedInsightsProvider } from "@/components/analytics/SpeedInsightsProvider";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import "./globals.css";
@@ -41,7 +43,10 @@ export default function RootLayout({
     <html className="min-h-full" lang="no">
       <body className="min-h-screen">
         <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <AnalyticsProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </AnalyticsProvider>
+          <SpeedInsightsProvider />
         </AuthProvider>
       </body>
     </html>

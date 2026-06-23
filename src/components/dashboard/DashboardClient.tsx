@@ -311,9 +311,13 @@ export function DashboardClient() {
       if (isFirstSubscription) {
         trackFunnelEvent("first_subscription_added", {
           category: subscription.category,
-          billingInterval: subscription.billingInterval ?? "unknown",
+          billing_interval: subscription.billingInterval ?? "unknown",
         });
       }
+      trackFunnelEvent("subscription_added", {
+        category: subscription.category,
+        billing_interval: subscription.billingInterval ?? "unknown",
+      });
       setForm(defaultForm);
       setFormErrors({});
       showToast({
@@ -362,6 +366,7 @@ export function DashboardClient() {
         currentSubscriptions.filter((subscription) => subscription.id !== id),
       );
       setSelectedIds((currentIds) => currentIds.filter((selectedId) => selectedId !== id));
+      trackFunnelEvent("subscription_deleted", { result: "success" });
       showToast({
         title: "Abonnement slettet",
         message: subscription ? `${subscription.name} er fjernet.` : "Abonnementet er fjernet.",
@@ -439,6 +444,10 @@ export function DashboardClient() {
       setEditingSubscription(null);
       setEditForm(defaultForm);
       setEditFormErrors({});
+      trackFunnelEvent("subscription_updated", {
+        category: updatedSubscription.category,
+        billing_interval: updatedSubscription.billingInterval ?? "unknown",
+      });
       showToast({
         title: "Endringer lagret",
         message: `${updatedSubscription.name} er oppdatert.`,
@@ -488,6 +497,7 @@ export function DashboardClient() {
       );
       setSelectedIds([]);
       setStep("success");
+      trackFunnelEvent("cancellation_started", { result: "success" });
       showToast({
         title: "Oppsigelse registrert",
         message: `${subscriptionsToCancel.length} abonnement er markert som avsluttet.`,
@@ -534,6 +544,9 @@ export function DashboardClient() {
       const subscriptionsResponse = await fetch("/api/subscriptions", { cache: "no-store" });
       if (subscriptionsResponse.ok) {
         setSubscriptionList((await subscriptionsResponse.json()) as Subscription[]);
+      }
+      if (status === "confirmed_cancelled") {
+        trackFunnelEvent("cancellation_completed", { result: "success" });
       }
       showToast({
         title: "Oppsigelse oppdatert",

@@ -47,7 +47,7 @@ export function CheckoutButton({
         return;
       }
 
-      trackFunnelEvent("checkout_failed", { plan, reason: result.error ?? "unknown" });
+      trackFunnelEvent("checkout_failed", { plan, error_category: result.error ?? "unknown" });
       const errorMessage = getCheckoutErrorMessage(result.error);
       setMessage(errorMessage);
       showToast({
@@ -58,7 +58,7 @@ export function CheckoutButton({
         onAction: result.statusUrl ? () => window.location.assign(result.statusUrl ?? "/payment/thanks") : startCheckout,
       });
     } catch {
-      trackFunnelEvent("checkout_failed", { plan, reason: "network" });
+      trackFunnelEvent("checkout_failed", { plan, error_category: "network" });
       const errorMessage = `Kunne ikke starte betaling akkurat nå. Prøv igjen eller kontakt ${siteConfig.contactEmail}.`;
       setMessage(errorMessage);
       showToast({

@@ -130,6 +130,7 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
       throw new Error(getAuthErrorMessage(result.error));
     }
 
+    trackFunnelEvent("login_completed", { method: "email_password" });
     window.location.href = result?.url ?? callbackUrl;
   }
 
@@ -258,15 +259,16 @@ export function MagicLinkAuthScreen({ mode, authConfig }: MagicLinkAuthScreenPro
           </div>
 
           <div className="grid gap-3">
-            <button
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#DBE4EE] bg-white px-5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50 disabled:opacity-55"
-              disabled={!providers.google}
-              onClick={() => signIn("google", { callbackUrl })}
-              type="button"
-            >
-              <GoogleIcon />
-              Fortsett med Google
-            </button>
+            {providers.google ? (
+              <button
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#DBE4EE] bg-white px-5 text-sm font-bold text-[#0D1B2A] transition hover:border-[#C8102E]/50"
+                onClick={() => signIn("google", { callbackUrl })}
+                type="button"
+              >
+                <GoogleIcon />
+                Fortsett med Google
+              </button>
+            ) : null}
             {providers.vipps ? (
               <button
                 aria-label="Logg inn med Vipps"

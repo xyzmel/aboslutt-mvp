@@ -7,6 +7,7 @@ import { signIn, signOut } from "next-auth/react";
 import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { useToast } from "@/components/ui/ToastProvider";
+import { resetAnalyticsIdentity } from "@/lib/analytics";
 
 type SettingsBillingAgreement = {
   plan: string;
@@ -281,7 +282,10 @@ export function SettingsClient({
             <InfoItem label="E-post" value={email ?? "Ikke satt"} />
             <LoadingButton
               className="w-full sm:w-auto"
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => {
+                resetAnalyticsIdentity();
+                signOut({ callbackUrl: "/login" });
+              }}
               type="button"
               variant="secondary"
             >

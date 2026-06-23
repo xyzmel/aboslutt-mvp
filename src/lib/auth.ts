@@ -13,6 +13,7 @@ import {
 import { validateEmailMagicLinkRequest } from "@/lib/beta";
 import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
+import { trackServerFunnelEvent } from "@/lib/server-analytics";
 
 type VippsProfile = {
   sub: string;
@@ -227,6 +228,23 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, email, profile }) {
       if (account?.provider === "vipps" && user.id) {
         await updateVippsProfileFields(user.id, profile);
+        trackLoginCompleted(user.id, "vipps");
+        return true;
+      }
+
+      if (account?.provider === "google" && user.id) {
+        trackLoginCompleted(user.id, "google");
+        trackServerFunnelEvent("email_provider_connected", { provider: "gmail", result: "success" }, user.id);
+        return true;
+      }
+
+      if (account?.provider === "credentials" && user.id) {
+        trackLoginCompleted(user.id, "email_password");
+        return true;
+      }
+
+      if (account?.provider === "email" && !email?.verificationRequest && user.id) {
+        trackLoginCompleted(user.id, "email_magic_link");
         return true;
       }
 
@@ -244,6 +262,10 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+
+function trackLoginCompleted(userId: string, method: string) {
+  trackServerFunnelEvent("login_completed", { method }, userId);
+}
 
 function getTokenId(token: JWT) {
   if (typeof token.id === "string") {

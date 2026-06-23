@@ -36,6 +36,7 @@ export default async function PricingPage() {
   return (
     <main className="flex min-h-screen flex-col bg-[#0D1B2A] text-white">
       <FunnelEvent event="pricing_viewed" />
+      <FunnelEvent event="premium_viewed" />
       <PublicHeader />
 
       <section className="px-5 py-14">
