@@ -7,9 +7,11 @@ type SendEmailInput = {
   text: string;
   html: string;
   replyTo?: string;
+  cc?: string;
+  from?: string;
 };
 
-export async function sendTransactionalEmail({ to, subject, text, html, replyTo }: SendEmailInput) {
+export async function sendTransactionalEmail({ to, subject, text, html, replyTo, cc, from }: SendEmailInput) {
   if (!isSmtpConfigured()) {
     return { sent: false };
   }
@@ -24,14 +26,15 @@ export async function sendTransactionalEmail({ to, subject, text, html, replyTo 
     },
   });
 
-  await transport.sendMail({
+  const result = await transport.sendMail({
     to,
-    from: process.env.EMAIL_FROM,
+    from: from ?? process.env.EMAIL_FROM,
     replyTo,
+    cc,
     subject,
     text,
     html,
   });
 
-  return { sent: true };
+  return { sent: true, messageId: typeof result.messageId === "string" ? result.messageId : null };
 }

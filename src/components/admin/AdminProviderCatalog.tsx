@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Image from "next/image";
 import { LoadingButton } from "@/components/ui/LoadingButton";
 
 type Provider = {
@@ -22,10 +23,27 @@ type Provider = {
   countryCode: string | null;
   verificationSource: string | null;
   isCancellationGuideActive: boolean;
+  supportsAbosluttSending: boolean;
+  verifiedCancellationEmail: string | null;
+  sendingVerifiedAt: string | null;
+  requiresProviderLogin: boolean;
+  requiresCustomerReference: boolean;
   defaultBillingInterval: string | null;
   supportedCountries: string[];
   isActive: boolean;
   lastVerifiedAt: string | null;
+  latestLogoAsset: ProviderLogoAsset | null;
+};
+
+type ProviderLogoAsset = {
+  id: string;
+  sourceUrl: string;
+  contentType: string;
+  byteSize: number;
+  status: string;
+  fetchedAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
 };
 
 const emptyProvider: Omit<Provider, "id"> = {
@@ -46,10 +64,16 @@ const emptyProvider: Omit<Provider, "id"> = {
   countryCode: "NO",
   verificationSource: null,
   isCancellationGuideActive: false,
+  supportsAbosluttSending: false,
+  verifiedCancellationEmail: null,
+  sendingVerifiedAt: null,
+  requiresProviderLogin: false,
+  requiresCustomerReference: false,
   defaultBillingInterval: "monthly",
   supportedCountries: ["NO"],
   isActive: true,
   lastVerifiedAt: null,
+  latestLogoAsset: null,
 };
 
 export function AdminProviderCatalog({
@@ -71,6 +95,7 @@ export function AdminProviderCatalog({
   const [editing, setEditing] = useState<Provider | null>(null);
   const [form, setForm] = useState<Omit<Provider, "id">>(emptyProvider);
   const [isSaving, setIsSaving] = useState(false);
+  const [logoActionId, setLogoActionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   function edit(provider: Provider) {
@@ -97,10 +122,14 @@ export function AdminProviderCatalog({
       setMessage(result.messages?.join(" ") ?? "Kunne ikke lagre leverandøren.");
       return;
     }
+    const savedProvider = {
+      ...result.provider,
+      latestLogoAsset: result.provider.latestLogoAsset ?? editing?.latestLogoAsset ?? null,
+    };
     setProviders((current) =>
       editing
-        ? current.map((provider) => (provider.id === result.provider?.id ? result.provider : provider))
-        : [...current, result.provider!].sort((a, b) => a.name.localeCompare(b.name, "nb")),
+        ? current.map((provider) => (provider.id === savedProvider.id ? savedProvider : provider))
+        : [...current, savedProvider].sort((a, b) => a.name.localeCompare(b.name, "nb")),
     );
     setEditing(null);
     setForm(emptyProvider);
@@ -115,7 +144,60 @@ export function AdminProviderCatalog({
     });
     const result = (await response.json().catch(() => ({}))) as { provider?: Provider };
     if (response.ok && result.provider) {
-      setProviders((current) => current.map((item) => (item.id === provider.id ? result.provider! : item)));
+      const updatedProvider = {
+        ...result.provider,
+        latestLogoAsset: result.provider.latestLogoAsset ?? provider.latestLogoAsset,
+      };
+      setProviders((current) => current.map((item) => (item.id === provider.id ? updatedProvider : item)));
+    }
+  }
+
+  async function runLogoAction(provider: Provider, action: "fetch" | "refetch" | "approve" | "reject") {
+    setLogoActionId(`${provider.id}:${action}`);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/subscription-providers/${provider.id}/logo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, assetId: provider.latestLogoAsset?.id }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        asset?: ProviderLogoAsset;
+        logoPath?: string;
+        message?: string;
+      };
+      if (!response.ok) {
+        setMessage(result.message ?? "Logo-handlingen kunne ikke fullføres.");
+        return;
+      }
+      setProviders((current) =>
+        current.map((item) =>
+          item.id !== provider.id
+            ? item
+            : {
+                ...item,
+                ...(result.asset ? { latestLogoAsset: result.asset } : {}),
+                ...(result.logoPath ? { logoPath: result.logoPath } : {}),
+                ...(action === "approve" && item.latestLogoAsset
+                  ? { latestLogoAsset: { ...item.latestLogoAsset, status: "approved", approvedAt: new Date().toISOString() } }
+                  : {}),
+                ...(action === "reject" && item.latestLogoAsset
+                  ? { latestLogoAsset: { ...item.latestLogoAsset, status: "rejected", rejectedAt: new Date().toISOString() } }
+                  : {}),
+              },
+        ),
+      );
+      setMessage(
+        action === "approve"
+          ? "Logoen er godkjent og publisert."
+          : action === "reject"
+            ? "Logoen er avvist."
+            : "Logoen er hentet og venter på godkjenning.",
+      );
+    } catch {
+      setMessage("Logo-handlingen kunne ikke fullføres. Prøv igjen.");
+    } finally {
+      setLogoActionId(null);
     }
   }
 
@@ -126,16 +208,16 @@ export function AdminProviderCatalog({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-[#F7F9FC] text-xs uppercase text-[#5F6F82]">
-              <tr><th className="px-4 py-3">Leverandør</th><th className="px-4 py-3">Kategori</th><th className="px-4 py-3">Guide</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Handlinger</th></tr>
+              <tr><th className="px-4 py-3">Leverandør</th><th className="px-4 py-3">Logo</th><th className="px-4 py-3">Guide</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Handlinger</th></tr>
             </thead>
             <tbody className="divide-y divide-[#DBE4EE]">
               {providers.map((provider) => (
                 <tr key={provider.id}>
                   <td className="px-4 py-3"><p className="font-bold">{provider.name}</p><p className="text-xs text-[#5F6F82]">{provider.aliases.join(", ") || provider.slug}</p></td>
-                  <td className="px-4 py-3">{provider.category}</td>
+                  <td className="px-4 py-3"><ProviderLogoAdmin provider={provider} busyAction={logoActionId} onAction={runLogoAction} /></td>
                   <td className="px-4 py-3 text-xs">{provider.isCancellationGuideActive ? "Aktiv" : "Mangler"}</td>
                   <td className="px-4 py-3">{provider.isActive ? "Aktiv" : "Deaktivert"}</td>
-                  <td className="px-4 py-3"><div className="flex gap-2"><button className="font-bold text-[#C8102E]" onClick={() => edit(provider)} type="button">Rediger</button><button className="font-bold text-[#5F6F82]" onClick={() => toggle(provider)} type="button">{provider.isActive ? "Deaktiver" : "Aktiver"}</button></div></td>
+                  <td className="px-4 py-3"><div className="flex gap-2"><button className="font-bold text-[#C8102E]" onClick={() => edit(provider)} type="button">Rediger</button><button className="font-bold text-[#5F6F82]" onClick={() => toggle(provider)} type="button">{provider.isActive ? "Deaktiver" : "Aktiver"}</button></div><p className="mt-1 text-xs text-[#5F6F82]">{provider.category}</p></td>
                 </tr>
               ))}
             </tbody>
@@ -177,6 +259,25 @@ export function AdminProviderCatalog({
             <input checked={form.isCancellationGuideActive} onChange={(event) => setForm((current) => ({ ...current, isCancellationGuideActive: event.target.checked }))} type="checkbox" />
             Veiledningen er aktiv
           </label>
+          <div className="rounded-xl border border-[#DBE4EE] p-3">
+            <p className="text-sm font-extrabold">Sending via Aboslutt</p>
+            <div className="mt-3 grid gap-3">
+              <label className="flex items-center gap-3 text-sm font-semibold">
+                <input checked={form.supportsAbosluttSending} onChange={(event) => setForm((current) => ({ ...current, supportsAbosluttSending: event.target.checked }))} type="checkbox" />
+                Verifisert for sending via Aboslutt
+              </label>
+              <Field label="Verifisert oppsigelsesadresse" value={form.verifiedCancellationEmail ?? ""} onChange={(verifiedCancellationEmail) => setForm((current) => ({ ...current, verifiedCancellationEmail }))} />
+              <Field label="Sending verifisert (YYYY-MM-DD)" value={form.sendingVerifiedAt?.slice(0, 10) ?? ""} onChange={(sendingVerifiedAt) => setForm((current) => ({ ...current, sendingVerifiedAt }))} />
+              <label className="flex items-center gap-3 text-sm font-semibold">
+                <input checked={form.requiresProviderLogin} onChange={(event) => setForm((current) => ({ ...current, requiresProviderLogin: event.target.checked }))} type="checkbox" />
+                Krever innlogging hos leverandøren
+              </label>
+              <label className="flex items-center gap-3 text-sm font-semibold">
+                <input checked={form.requiresCustomerReference} onChange={(event) => setForm((current) => ({ ...current, requiresCustomerReference: event.target.checked }))} type="checkbox" />
+                Krever kundenummer eller medlemsreferanse
+              </label>
+            </div>
+          </div>
           <Field label="Standardintervall" value={form.defaultBillingInterval ?? ""} onChange={(defaultBillingInterval) => setForm((current) => ({ ...current, defaultBillingInterval }))} />
           <ListField label="Landkoder" values={form.supportedCountries} onChange={(supportedCountries) => setForm((current) => ({ ...current, supportedCountries }))} />
           <Field label="Sist verifisert (YYYY-MM-DD)" value={form.lastVerifiedAt?.slice(0, 10) ?? ""} onChange={(lastVerifiedAt) => setForm((current) => ({ ...current, lastVerifiedAt }))} />
@@ -205,6 +306,57 @@ export function AdminProviderCatalog({
     </section>
     </>
   );
+}
+
+function ProviderLogoAdmin({
+  provider,
+  busyAction,
+  onAction,
+}: {
+  provider: Provider;
+  busyAction: string | null;
+  onAction: (provider: Provider, action: "fetch" | "refetch" | "approve" | "reject") => void;
+}) {
+  const asset = provider.latestLogoAsset;
+  const previewUrl = asset ? `/api/admin/subscription-providers/${provider.id}/logo?assetId=${asset.id}` : null;
+  return (
+    <div className="min-w-52">
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-[#F7F9FC] ring-1 ring-[#DBE4EE]">
+          {previewUrl ? <Image alt={`Forhåndsvisning av ${provider.name}`} height={32} src={previewUrl} unoptimized width={32} /> : <span className="text-xs font-black">{provider.name.slice(0, 2).toUpperCase()}</span>}
+        </span>
+        <div className="text-xs">
+          <p className="font-bold">{asset ? formatLogoStatus(asset.status) : "Ingen kandidat"}</p>
+          {asset ? <p className="text-[#5F6F82]">{Math.ceil(asset.byteSize / 1024)} kB · {new Date(asset.fetchedAt).toLocaleDateString("nb-NO")}</p> : null}
+          {asset ? <p className="max-w-36 truncate text-[#5F6F82]" title={asset.sourceUrl}>{getHostname(asset.sourceUrl)}</p> : null}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold">
+        <button disabled={!provider.websiteUrl || Boolean(busyAction)} onClick={() => onAction(provider, asset ? "refetch" : "fetch")} type="button">
+          {asset ? "Hent på nytt" : "Hent logo"}
+        </button>
+        {previewUrl ? <a className="text-[#5F6F82]" href={previewUrl} rel="noreferrer" target="_blank">Forhåndsvis</a> : null}
+        {asset?.status === "pending" ? (
+          <>
+            <button className="text-emerald-700" disabled={Boolean(busyAction)} onClick={() => onAction(provider, "approve")} type="button">Godkjenn</button>
+            <button className="text-[#C8102E]" disabled={Boolean(busyAction)} onClick={() => onAction(provider, "reject")} type="button">Avvis</button>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function formatLogoStatus(status: string) {
+  return { pending: "Venter på godkjenning", approved: "Godkjent", rejected: "Avvist" }[status] ?? status;
+}
+
+function getHostname(value: string) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return "Ukjent kilde";
+  }
 }
 
 type CoverageItem = { id: string; name: string; subscriptionCount: number };

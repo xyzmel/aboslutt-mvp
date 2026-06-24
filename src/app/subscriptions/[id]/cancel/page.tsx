@@ -48,6 +48,10 @@ export default async function CancelSubscriptionPage({ params }: CancelPageProps
           requiredInformation: true,
           confirmationExpected: true,
           isCancellationGuideActive: true,
+          supportsAbosluttSending: true,
+          sendingVerifiedAt: true,
+          requiresProviderLogin: true,
+          requiresCustomerReference: true,
           isActive: true,
           lastVerifiedAt: true,
         },
@@ -77,11 +81,20 @@ export default async function CancelSubscriptionPage({ params }: CancelPageProps
       confirmedAt: true,
       rejectedAt: true,
       providerResponse: true,
+      requestedEndDate: true,
       createdAt: true,
       updatedAt: true,
       events: {
         orderBy: { createdAt: "asc" },
         select: { id: true, type: true, message: true, createdAt: true },
+      },
+      delivery: {
+        select: {
+          recipient: true,
+          deliveryStatus: true,
+          bounceStatus: true,
+          sentAt: true,
+        },
       },
     },
   });

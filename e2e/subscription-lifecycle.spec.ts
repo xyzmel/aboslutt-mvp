@@ -39,9 +39,10 @@ test.describe("subscription lifecycle", () => {
     expect(activeDelete.status()).toBe(409);
 
     await editedCard.getByRole("link", { name: "Si opp" }).click();
-    await page.getByLabel("Oppsigelsesmetode").selectOption("manual_unknown");
-    await page.getByRole("button", { name: "Lagre utkast" }).click();
-    await expect(page.getByText("Oppsigelsesutkastet er klart.")).toBeVisible();
+    await page.getByLabel("Bruk et oppsigelsesutkast").check();
+    await page.getByRole("button", { name: "Fortsett" }).click();
+    await page.getByRole("button", { name: "Klargjør oppsigelsen" }).click();
+    await expect(page.getByText("Oppsigelsen er klargjort.", { exact: false })).toBeVisible();
 
     const inProgress = await getSubscription(subscriptionId!);
     expect(inProgress?.cancellationRequests[0]?.status).toBe("ready");
@@ -50,9 +51,10 @@ test.describe("subscription lifecycle", () => {
     });
     expect(inProgressDelete.status()).toBe(409);
 
+    await page.getByRole("button", { name: "Jeg har sendt oppsigelsen" }).click();
     page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Bekreftet avsluttet" }).click();
-    await expect(page.getByText("Bekreftet som avsluttet. Abonnementet er markert som avsluttet.")).toBeVisible();
+    await page.getByRole("button", { name: "Bekreft avsluttet" }).click();
+    await expect(page.getByText("Abonnementet er registrert som bekreftet avsluttet.")).toBeVisible();
 
     await page.goto("/dashboard");
     await expect(page.locator("#subscriptions").getByText(editedName)).toHaveCount(0);

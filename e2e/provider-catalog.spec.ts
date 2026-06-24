@@ -1,5 +1,11 @@
 import { test, expect } from "./support/fixtures";
-import { getSubscription } from "./support/database";
+import {
+  createSubscription,
+  createSubscriptionProvider,
+  deleteSubscriptionProvider,
+  getSubscription,
+} from "./support/database";
+import { login } from "./support/auth";
 
 test.describe("subscription provider catalog", () => {
   test("selects a catalog provider without overwriting price or date", async ({ page, authenticatedPage }) => {
@@ -50,6 +56,21 @@ test.describe("subscription provider catalog", () => {
       data: { name: "Ikke tillatt", slug: "ikke-tillatt", category: "other" },
     });
     expect(response.status()).toBe(403);
+    const logoResponse = await page.request.post("/api/admin/subscription-providers/not-allowed/logo", {
+      data: { action: "fetch" },
+    });
+    expect(logoResponse.status()).toBe(403);
+    const capabilityResponse = await page.request.patch("/api/admin/subscription-providers/not-allowed", {
+      data: {
+        name: "Ikke tillatt",
+        slug: "ikke-tillatt",
+        category: "other",
+        supportsAbosluttSending: true,
+        verifiedCancellationEmail: "cancel@example.no",
+        sendingVerifiedAt: "2026-06-24",
+      },
+    });
+    expect(capabilityResponse.status()).toBe(403);
   });
 
   test("receipt review shows catalog metadata and never imports automatically", async ({ page, authenticatedPage }) => {
@@ -117,20 +138,104 @@ test.describe("subscription provider catalog", () => {
     await card.getByRole("link", { name: "Si opp" }).click();
 
     await expect(page.getByText("Netflix", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Sist verifisert", { exact: false })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Rapporter feil informasjon" })).toBeVisible();
-    await page.getByRole("button", { name: "Lagre utkast" }).click();
+    await expect(page.getByRole("heading", { name: "Velg hvordan du vil avslutte" })).toBeVisible();
+    await page.getByRole("button", { name: "Fortsett" }).click();
+    await page.getByRole("button", { name: "Klargjør oppsigelsen" }).click();
     await page.getByRole("button", { name: "Jeg har sendt oppsigelsen" }).click();
-    await expect(page.getByText("Oppsigelse sendt – venter på bekreftelse")).toBeVisible();
+    await expect(page.getByText("Venter på bekreftelse", { exact: true })).toBeVisible();
 
     const pending = await getSubscription(subscriptionId);
     expect(pending?.status).toBe("active");
     expect(pending?.cancellationRequests[0]?.status).toBe("awaiting_confirmation");
 
     page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Bekreftet avsluttet" }).click();
-    await expect(page.getByText("Bekreftet som avsluttet. Abonnementet er markert som avsluttet.")).toBeVisible();
+    await page.getByRole("button", { name: "Bekreft avsluttet" }).click();
+    await expect(page.getByText("Abonnementet er registrert som bekreftet avsluttet.")).toBeVisible();
     const completed = await getSubscription(subscriptionId);
     expect(completed?.status).toBe("cancelled");
+  });
+
+  test("verified Aboslutt sending requires authorization and keeps delivery failures in review", async ({
+    page,
+    premiumUser,
+  }) => {
+    const provider = await createSubscriptionProvider({
+      name: "Playwright Verified Send",
+      supportsAbosluttSending: true,
+      verifiedCancellationEmail: "cancel@provider.example",
+      sendingVerifiedAt: new Date(),
+    });
+    const subscription = await createSubscription(premiumUser.id, {
+      providerId: provider.id,
+      name: provider.name,
+    });
+
+    try {
+      await login(page, premiumUser);
+      await page.goto(`/subscriptions/${subscription.id}/cancel`);
+      await expect(page.getByLabel("Send via Aboslutt")).toBeChecked();
+      await page.getByRole("button", { name: "Fortsett" }).click();
+      await page.getByRole("button", { name: "Klargjør oppsigelsen" }).click();
+      await expect(page.getByRole("button", { name: "Bekreft avsluttet" })).toHaveCount(0);
+
+      let attempts = 0;
+      await page.route(`**/api/subscriptions/${subscription.id}/cancellation`, async (route) => {
+        if (route.request().method() !== "PATCH") return route.continue();
+        attempts += 1;
+        if (attempts === 1) {
+          return route.fulfill({
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: "DELIVERY_FAILED",
+              message: "Vi klarte ikke å sende oppsigelsen. Bruk den manuelle metoden og kontakt leverandøren direkte.",
+            }),
+          });
+        }
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            request: {
+              id: "request-e2e",
+              status: "awaiting_confirmation",
+              method: "aboslutt_email",
+              recipientEmail: "cancel@provider.example",
+              customerName: premiumUser.email,
+              customerEmail: premiumUser.email,
+              customerNumber: null,
+              subject: "Oppsigelse",
+              body: "Oppsigelse",
+              consentConfirmed: true,
+              sentAt: new Date().toISOString(),
+              confirmedAt: null,
+              rejectedAt: null,
+              providerResponse: "sent_via_aboslutt",
+              requestedEndDate: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              events: [],
+              delivery: {
+                recipient: "cancel@provider.example",
+                deliveryStatus: "accepted",
+                bounceStatus: "unknown",
+                sentAt: new Date().toISOString(),
+              },
+            },
+          }),
+        });
+      });
+
+      await page.getByText("Jeg gir Aboslutt begrenset fullmakt", { exact: false }).click();
+      await page.getByRole("button", { name: "Send via Aboslutt" }).click();
+      await expect(page.getByText("Vi klarte ikke å sende oppsigelsen.", { exact: false })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Bekreft avsluttet" })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Send via Aboslutt" }).click();
+      await expect(page.getByRole("button", { name: "Bekreft avsluttet" })).toBeVisible();
+      await expect(page.getByText("cancel@provider.example")).toBeVisible();
+    } finally {
+      await deleteSubscriptionProvider(provider.id);
+    }
   });
 });

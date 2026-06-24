@@ -244,6 +244,9 @@ export const authOptions: NextAuthOptions = {
       if (user?.id) {
         token.id = user.id;
       }
+      if (user?.id && account) {
+        token.authenticatedAt = Date.now();
+      }
 
       if (account?.provider) {
         token.provider = account.provider;
@@ -273,6 +276,7 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      session.authenticatedAt = typeof token.authenticatedAt === "number" ? token.authenticatedAt : undefined;
       if (session.user) {
         session.user.id = getTokenId(token);
         session.user.email = token.email ?? session.user.email ?? null;

@@ -31,13 +31,13 @@ export function isCancellationStatus(value: string): value is CancellationStatus
 
 export function getCancellationStatusLabel(status?: string | null) {
   const labels: Record<CancellationStatus, string> = {
-    draft: "Oppsigelse pågår",
-    ready: "Oppsigelse pågår",
-    sent: "Oppsigelse sendt – venter på bekreftelse",
-    awaiting_confirmation: "Oppsigelse sendt – venter på bekreftelse",
-    confirmed_cancelled: "Abonnement avsluttet",
-    rejected: "Oppsigelse pågår",
-    manual_required: "Oppsigelse pågår",
+    draft: "Oppsigelse klargjort",
+    ready: "Oppsigelse klargjort",
+    sent: "Oppsigelse sendt",
+    awaiting_confirmation: "Venter på bekreftelse",
+    confirmed_cancelled: "Bekreftet avsluttet",
+    rejected: "Krever manuell handling",
+    manual_required: "Krever manuell handling",
   };
 
   return status && isCancellationStatus(status) ? labels[status] : null;
@@ -83,7 +83,7 @@ Denne oppsigelsen er sendt via Aboslutt på vegne av kunden.`;
 export function getCancellationEventLabel(type: string) {
   const labels: Record<CancellationEventType, string> = {
     draft_created: "Utkast opprettet",
-    ready: "Klar til sending",
+    ready: "Oppsigelse klargjort",
     email_sent: "Sendt på vegne av bruker",
     awaiting_confirmation: "Venter på bekreftelse",
     confirmed_cancelled: "Bekreftet avsluttet",

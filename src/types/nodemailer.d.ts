@@ -3,13 +3,14 @@ declare module "nodemailer" {
     to: string;
     from?: string;
     replyTo?: string;
+    cc?: string;
     subject: string;
     text: string;
     html: string;
   };
 
   type Transport = {
-    sendMail(options: MailOptions): Promise<unknown>;
+    sendMail(options: MailOptions): Promise<{ messageId?: string | null }>;
   };
 
   const nodemailer: {

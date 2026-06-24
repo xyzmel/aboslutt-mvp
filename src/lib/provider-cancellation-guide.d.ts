@@ -16,6 +16,10 @@ export function toPublicCancellationGuide(provider: Record<string, unknown>): {
   confirmationExpected: string | null;
   officialUrl: string | null;
   lastVerifiedAt: Date | string | null;
+  supportsAbosluttSending: boolean;
+  sendingVerifiedAt: Date | string | null;
+  requiresProviderLogin: boolean;
+  requiresCustomerReference: boolean;
 } | null;
 export function hasActiveCancellationGuide(provider: Record<string, unknown>): boolean;
 export function getSafeProviderGuideUrl(provider: Record<string, unknown>): string | null;

@@ -68,6 +68,26 @@ export async function createSubscription(userId: string, overrides: Record<strin
   });
 }
 
+export async function createSubscriptionProvider(overrides: Record<string, unknown> = {}) {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  return prisma.subscriptionProvider.create({
+    data: {
+      name: `Playwright Provider ${suffix}`,
+      slug: `playwright-provider-${suffix}`,
+      category: "other",
+      cancellationMethod: "email",
+      cancellationInstructions: ["Send en skriftlig oppsigelse."],
+      isCancellationGuideActive: true,
+      isActive: true,
+      ...overrides,
+    },
+  });
+}
+
+export async function deleteSubscriptionProvider(id: string) {
+  await prisma.subscriptionProvider.deleteMany({ where: { id } });
+}
+
 export async function createBillingAgreement(
   userId: string,
   status: string,

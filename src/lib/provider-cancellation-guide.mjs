@@ -15,6 +15,11 @@ export function validateCancellationGuideInput(input) {
   const countryCode = cleanString(input?.countryCode, 2).toUpperCase() || null;
   const verificationSource = cleanString(input?.verificationSource, 500) || null;
   const isActive = input?.isCancellationGuideActive === true;
+  const supportsAbosluttSending = input?.supportsAbosluttSending === true;
+  const verifiedCancellationEmail = cleanString(input?.verifiedCancellationEmail, 254).toLowerCase() || null;
+  const sendingVerifiedAt = parseDate(input?.sendingVerifiedAt);
+  const requiresProviderLogin = input?.requiresProviderLogin === true;
+  const requiresCustomerReference = input?.requiresCustomerReference === true;
   const errors = [];
 
   if (method && !cancellationGuideMethods.includes(method)) {
@@ -25,6 +30,12 @@ export function validateCancellationGuideInput(input) {
   }
   if (isActive && (!method || method === "unknown" || instructions.length === 0)) {
     errors.push("En aktiv veiledning må ha metode og minst ett konkret trinn.");
+  }
+  if (verifiedCancellationEmail && !isEmail(verifiedCancellationEmail)) {
+    errors.push("Verifisert oppsigelsesadresse må være en gyldig e-postadresse.");
+  }
+  if (supportsAbosluttSending && (!verifiedCancellationEmail || !sendingVerifiedAt)) {
+    errors.push("Sending via Aboslutt krever verifisert mottakeradresse og verifikasjonsdato.");
   }
 
   return {
@@ -38,6 +49,11 @@ export function validateCancellationGuideInput(input) {
       countryCode,
       verificationSource,
       isCancellationGuideActive: isActive,
+      supportsAbosluttSending,
+      verifiedCancellationEmail,
+      sendingVerifiedAt,
+      requiresProviderLogin,
+      requiresCustomerReference,
     },
   };
 }
@@ -47,6 +63,7 @@ export function toPublicCancellationGuide(provider) {
     return null;
   }
 
+  const sendingCapability = getCancellationSendingCapability(provider);
   return {
     providerId: provider.id,
     providerName: provider.name,
@@ -57,6 +74,10 @@ export function toPublicCancellationGuide(provider) {
     confirmationExpected: provider.confirmationExpected ?? null,
     officialUrl: getSafeProviderGuideUrl(provider),
     lastVerifiedAt: provider.lastVerifiedAt ?? null,
+    supportsAbosluttSending: sendingCapability.allowed,
+    sendingVerifiedAt: provider.sendingVerifiedAt ?? null,
+    requiresProviderLogin: provider.requiresProviderLogin === true,
+    requiresCustomerReference: provider.requiresCustomerReference === true,
   };
 }
 
@@ -133,3 +154,14 @@ function cleanList(value, limit, maxLength) {
   const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(/\r?\n/) : [];
   return [...new Set(list.map((item) => cleanString(item, maxLength)).filter(Boolean))].slice(0, limit);
 }
+
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+import { getCancellationSendingCapability } from "./cancellation-sending.mjs";

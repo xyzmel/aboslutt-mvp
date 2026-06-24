@@ -23,7 +23,23 @@ export default async function AdminProvidersPage() {
   const [providers, unmatchedSignals] = await Promise.all([
     prisma.subscriptionProvider.findMany({
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
-      include: { _count: { select: { subscriptions: true } } },
+      include: {
+        _count: { select: { subscriptions: true } },
+        logoAssets: {
+          orderBy: { fetchedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            sourceUrl: true,
+            contentType: true,
+            byteSize: true,
+            status: true,
+            fetchedAt: true,
+            approvedAt: true,
+            rejectedAt: true,
+          },
+        },
+      },
     }),
     prisma.unmatchedProviderSignal.findMany({
       orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],
@@ -70,11 +86,40 @@ export default async function AdminProvidersPage() {
 }
 
 type ProviderWithCount = Prisma.SubscriptionProviderGetPayload<{
-  include: { _count: { select: { subscriptions: true } } };
+  include: {
+    _count: { select: { subscriptions: true } };
+    logoAssets: {
+      select: {
+        id: true;
+        sourceUrl: true;
+        contentType: true;
+        byteSize: true;
+        status: true;
+        fetchedAt: true;
+        approvedAt: true;
+        rejectedAt: true;
+      };
+    };
+  };
 }>;
 
 function serializeProvider(provider: ProviderWithCount) {
-  return { ...provider, _count: undefined, lastVerifiedAt: provider.lastVerifiedAt?.toISOString() ?? null };
+  const latestLogoAsset = provider.logoAssets[0] ?? null;
+  return {
+    ...provider,
+    _count: undefined,
+    logoAssets: undefined,
+    latestLogoAsset: latestLogoAsset
+      ? {
+          ...latestLogoAsset,
+          fetchedAt: latestLogoAsset.fetchedAt.toISOString(),
+          approvedAt: latestLogoAsset.approvedAt?.toISOString() ?? null,
+          rejectedAt: latestLogoAsset.rejectedAt?.toISOString() ?? null,
+        }
+      : null,
+    lastVerifiedAt: provider.lastVerifiedAt?.toISOString() ?? null,
+    sendingVerifiedAt: provider.sendingVerifiedAt?.toISOString() ?? null,
+  };
 }
 
 function toCoverageItem(provider: ProviderWithCount) {

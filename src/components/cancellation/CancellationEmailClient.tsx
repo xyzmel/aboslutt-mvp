@@ -3,15 +3,13 @@
 import { FormEvent, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
-import type { CancellationProviderMethod } from "@/data/cancellation-providers";
 import { useToast } from "@/components/ui/ToastProvider";
-import { getCancellationEventLabel, getCancellationStatusLabel } from "@/lib/cancellation";
-import {
-  getCancellationGuideMethodLabel,
-} from "@/lib/provider-cancellation-guide.mjs";
+import { getCancellationEventLabel } from "@/lib/cancellation";
+import { getCancellationGuideMethodLabel } from "@/lib/provider-cancellation-guide.mjs";
 import { getProviderInitials } from "@/lib/subscription-provider-catalog.mjs";
 import type { Subscription } from "@/types/subscription";
+
+type CancellationMode = "aboslutt_email" | "provider_portal" | "manual_draft";
 
 type CancellationRequestView = {
   id: string;
@@ -28,9 +26,16 @@ type CancellationRequestView = {
   confirmedAt: Date | string | null;
   rejectedAt: Date | string | null;
   providerResponse: string | null;
+  requestedEndDate: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   events?: CancellationEventView[];
+  delivery?: {
+    recipient: string;
+    deliveryStatus: string;
+    bounceStatus: string;
+    sentAt: Date | string | null;
+  } | null;
 };
 
 type CancellationEventView = {
@@ -40,36 +45,27 @@ type CancellationEventView = {
   createdAt: Date | string;
 };
 
-type CancellationEmailClientProps = {
-  subscription: Subscription;
-  currentUserName: string | null;
-  currentUserEmail: string | null;
-  canSend: boolean;
-  initialRequest: CancellationRequestView | null;
-  guide: ProviderCancellationGuide | null;
-};
-
 type ProviderCancellationGuide = {
   providerId: string;
   providerName: string;
   logoPath: string | null;
-  method: CancellationGuideMethod;
+  method: "website" | "email" | "phone" | "app" | "manual" | "unknown";
   instructions: string[];
   requiredInformation: string[];
   confirmationExpected: string | null;
   officialUrl: string | null;
   lastVerifiedAt: Date | string | null;
+  supportsAbosluttSending: boolean;
+  sendingVerifiedAt: Date | string | null;
+  requiresProviderLogin: boolean;
+  requiresCustomerReference: boolean;
 };
-
-type CancellationGuideMethod = "website" | "email" | "phone" | "app" | "manual" | "unknown";
 
 type DraftForm = {
   customerName: string;
   customerEmail: string;
   customerNumber: string;
-  extraNote: string;
-  recipientEmail: string;
-  method: CancellationProviderMethod;
+  requestedEndDate: string;
   subject: string;
   body: string;
 };
@@ -81,217 +77,186 @@ export function CancellationEmailClient({
   canSend,
   initialRequest,
   guide,
-}: CancellationEmailClientProps) {
+}: {
+  subscription: Subscription;
+  currentUserName: string | null;
+  currentUserEmail: string | null;
+  canSend: boolean;
+  initialRequest: CancellationRequestView | null;
+  guide: ProviderCancellationGuide | null;
+}) {
   const { showToast } = useToast();
-  const initialMethod = getInitialMethod(initialRequest?.method, guide);
-  const generatedDraft = useMemo(
-    () => createLocalDraft(subscription.name, currentUserName ?? "", currentUserEmail ?? "", "", ""),
+  const recommendedMode = getRecommendedMode(guide, canSend);
+  const initialMode = normalizeMode(initialRequest?.method) ?? recommendedMode;
+  const draft = useMemo(
+    () => createLocalDraft(subscription.name, currentUserName ?? "", currentUserEmail ?? "", ""),
     [currentUserEmail, currentUserName, subscription.name],
   );
   const [request, setRequest] = useState(initialRequest);
+  const [mode, setMode] = useState<CancellationMode>(initialMode);
+  const [step, setStep] = useState(initialRequest ? (isSent(initialRequest.status) ? 3 : 2) : 1);
   const [form, setForm] = useState<DraftForm>({
     customerName: initialRequest?.customerName ?? currentUserName ?? "",
     customerEmail: initialRequest?.customerEmail ?? currentUserEmail ?? "",
     customerNumber: initialRequest?.customerNumber ?? "",
-    extraNote: "",
-    recipientEmail: initialRequest?.recipientEmail ?? "",
-    method: initialMethod,
-    subject: initialRequest?.subject ?? generatedDraft.subject,
-    body: initialRequest?.body ?? generatedDraft.body,
+    requestedEndDate: initialRequest?.requestedEndDate ?? "",
+    subject: initialRequest?.subject ?? draft.subject,
+    body: initialRequest?.body ?? draft.body,
   });
-  const [consentConfirmed, setConsentConfirmed] = useState(Boolean(initialRequest?.consentConfirmed));
+  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [note, setNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
-  const canSendEmailMethod = form.method === "email" && Boolean(form.recipientEmail);
-  const showManualPrimary = form.method !== "email";
+
+  const modes = getAvailableModes(guide, canSend);
 
   function updateForm(field: keyof DraftForm, value: string) {
     setForm((current) => {
       const next = { ...current, [field]: value };
-      if (field === "method" && value !== "email") {
-        next.recipientEmail = current.recipientEmail;
-      }
-      if (["customerName", "customerEmail", "customerNumber", "extraNote"].includes(field)) {
+      if (["customerName", "customerEmail", "customerNumber"].includes(field)) {
         const nextDraft = createLocalDraft(
           subscription.name,
           next.customerName,
           next.customerEmail,
           next.customerNumber,
-          next.extraNote,
         );
-        return { ...next, subject: next.subject || nextDraft.subject, body: nextDraft.body };
+        return { ...next, body: nextDraft.body };
       }
-      return next as DraftForm;
+      return next;
     });
   }
 
-  async function saveDraft(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveDraft(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (isWorking) return null;
     setIsWorking(true);
     setMessage(null);
-
     try {
       const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, method: mode }),
       });
-      const result = (await response.json()) as { ok?: boolean; message?: string; request?: CancellationRequestView };
-
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        request?: CancellationRequestView;
+      };
       if (!response.ok || !result.request) {
-        throw new Error(result.message ?? "Kunne ikke lagre utkastet.");
+        throw new Error(result.message ?? "Kunne ikke klargjøre oppsigelsen.");
       }
-
       setRequest(result.request);
-      setMessage("Utkastet er lagret. Kontroller teksten før du sender eller bruker leverandørens anbefalte metode.");
-      showToast({ title: "Utkast lagret", message: "Oppsigelsesutkastet er klart.", tone: "success" });
-    } catch {
-      const userMessage = "Kunne ikke lagre utkastet akkurat nå.";
-      setMessage(userMessage);
-      showToast({ title: "Lagring feilet", message: userMessage, tone: "error" });
+      setStep(2);
+      setMessage("Oppsigelsen er klargjort. Kontroller innholdet før du fortsetter.");
+      return result.request;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Kunne ikke klargjøre oppsigelsen.");
+      return null;
     } finally {
       setIsWorking(false);
     }
   }
 
-  async function sendEmail() {
-    if (!request) {
-      setMessage("Lagre utkastet før du sender.");
+  async function sendViaAboslutt() {
+    if (!request || isWorking) return;
+    if (!authorizationConfirmed) {
+      setMessage("Du må godkjenne den begrensede fullmakten før sending.");
       return;
     }
-
-    if (!canSendEmailMethod) {
-      setMessage("Mottakeradresse mangler. Kopier utkastet eller bruk leverandørens anbefalte oppsigelsesmetode.");
-      return;
-    }
-
-    if (!consentConfirmed) {
-      setMessage("Du må bekrefte samtykke før Aboslutt kan sende oppsigelsen.");
-      return;
-    }
-
+    const savedRequest = await saveDraft();
+    if (!savedRequest) return;
     setIsWorking(true);
     setMessage(null);
-
     try {
       const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send", requestId: request.id }),
+        body: JSON.stringify({
+          action: "send",
+          requestId: savedRequest.id,
+          authorizationConfirmed: true,
+        }),
       });
-      const result = (await response.json()) as { ok?: boolean; message?: string; request?: CancellationRequestView };
-
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        request?: CancellationRequestView;
+      };
       if (!response.ok || !result.request) {
         throw new Error(result.message ?? "Kunne ikke sende oppsigelsen.");
       }
-
       setRequest(result.request);
-      setMessage("Oppsigelsen er sendt. Abonnementet er ikke markert som avsluttet før du bekrefter svar fra leverandøren.");
-      showToast({ title: "Oppsigelse sendt", message: "Følg opp når leverandøren svarer.", tone: "success" });
-    } catch {
-      const userMessage = "Kunne ikke sende oppsigelsen akkurat nå.";
-      setMessage(userMessage);
-      showToast({ title: "Sending feilet", message: userMessage, tone: "error" });
+      setStep(3);
+      setMessage(null);
+      showToast({
+        title: "Oppsigelse sendt",
+        message: "Venter på bekreftelse fra leverandøren.",
+        tone: "success",
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Kunne ikke sende oppsigelsen.");
     } finally {
       setIsWorking(false);
     }
   }
 
-  async function updateStatus(status: "confirmed_cancelled" | "rejected" | "manual_required") {
-    if (!request) {
-      return;
+  async function markSent() {
+    if (!request || isWorking) return;
+    const savedRequest = await saveDraft();
+    if (!savedRequest) return;
+    setIsWorking(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_sent", requestId: savedRequest.id }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        request?: CancellationRequestView;
+      };
+      if (!response.ok || !result.request) throw new Error(result.message);
+      setRequest(result.request);
+      setStep(3);
+      showToast({
+        title: "Oppsigelse registrert",
+        message: "Venter på bekreftelse fra leverandøren.",
+        tone: "success",
+      });
+    } catch (error) {
+      setMessage(error instanceof Error && error.message ? error.message : "Kunne ikke oppdatere oppsigelsen.");
+    } finally {
+      setIsWorking(false);
     }
+  }
 
+  async function updateStatus(status: "confirmed_cancelled" | "manual_required") {
+    if (!request || isWorking) return;
     if (
       status === "confirmed_cancelled" &&
-      !window.confirm("Bekreft at abonnementet faktisk er avsluttet hos leverandøren.")
+      !window.confirm("Bekreft at leverandøren faktisk har avsluttet abonnementet.")
     ) {
       return;
     }
-
     setIsWorking(true);
     setMessage(null);
-
     try {
       const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "status", requestId: request.id, status }),
       });
-      const result = (await response.json()) as { ok?: boolean; message?: string; request?: CancellationRequestView };
-
-      if (!response.ok || !result.request) {
-        throw new Error(result.message ?? "Kunne ikke oppdatere status.");
-      }
-
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        request?: CancellationRequestView;
+      };
+      if (!response.ok || !result.request) throw new Error(result.message);
       setRequest(result.request);
       setMessage(
         status === "confirmed_cancelled"
-          ? "Bekreftet som avsluttet. Abonnementet er markert som avsluttet."
-          : "Status er oppdatert.",
+          ? "Abonnementet er registrert som bekreftet avsluttet."
+          : "Oppsigelsen er markert for manuell oppfølging.",
       );
-      showToast({ title: "Status oppdatert", message: "Oppsigelsen er lagret.", tone: "success" });
-    } catch {
-      const userMessage = "Kunne ikke oppdatere status akkurat nå.";
-      setMessage(userMessage);
-      showToast({ title: "Oppdatering feilet", message: userMessage, tone: "error" });
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
-  async function markRequestSent() {
-    if (!request || isWorking) return;
-    setIsWorking(true);
-    setMessage(null);
-    try {
-      const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark_sent", requestId: request.id }),
-      });
-      const result = (await response.json()) as { request?: CancellationRequestView };
-      if (!response.ok || !result.request) throw new Error();
-      setRequest(result.request);
-      setMessage("Oppsigelsen er registrert som sendt. Nå venter du på bekreftelse fra leverandøren.");
-      showToast({ title: "Oppsigelse sendt", message: "Venter på bekreftelse fra leverandøren.", tone: "success" });
-    } catch {
-      setMessage("Kunne ikke oppdatere oppsigelsen akkurat nå.");
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
-  async function addNote() {
-    if (!request || !note.trim()) {
-      setMessage("Skriv et notat først.");
-      return;
-    }
-
-    setIsWorking(true);
-    setMessage(null);
-
-    try {
-      const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "note", requestId: request.id, note }),
-      });
-      const result = (await response.json()) as { ok?: boolean; message?: string; request?: CancellationRequestView };
-
-      if (!response.ok || !result.request) {
-        throw new Error(result.message ?? "Kunne ikke lagre notatet.");
-      }
-
-      setRequest(result.request);
-      setNote("");
-      setMessage("Notatet er lagt til.");
-      showToast({ title: "Notat lagt til", message: "Notatet er lagret på oppsigelsen.", tone: "success" });
-    } catch {
-      const userMessage = "Kunne ikke lagre notatet akkurat nå.";
-      setMessage(userMessage);
-      showToast({ title: "Lagring feilet", message: userMessage, tone: "error" });
+    } catch (error) {
+      setMessage(error instanceof Error && error.message ? error.message : "Kunne ikke oppdatere status.");
     } finally {
       setIsWorking(false);
     }
@@ -299,8 +264,27 @@ export function CancellationEmailClient({
 
   async function copyDraft() {
     await navigator.clipboard.writeText(`${form.subject}\n\n${form.body}`).catch(() => null);
-    setMessage("Utkastet er kopiert.");
-    showToast({ title: "Kopiert", message: "Utkastet ligger på utklippstavlen.", tone: "success" });
+    setMessage("Oppsigelsesutkastet er kopiert.");
+  }
+
+  function downloadDocumentation() {
+    if (!request) return;
+    const content = [
+      `Oppsigelse: ${subscription.name}`,
+      `Status: ${getPublicCancellationState(request.status)}`,
+      request.delivery?.recipient ? `Mottaker: ${request.delivery.recipient}` : "",
+      request.sentAt ? `Sendt: ${formatDateTime(request.sentAt)}` : "",
+      "",
+      request.subject,
+      "",
+      request.body,
+    ].filter(Boolean).join("\n");
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `oppsigelse-${subscription.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -309,329 +293,215 @@ export function CancellationEmailClient({
         Tilbake til abonnementet
       </Link>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
-        <aside className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#C8102E]">Oppsigelse</p>
-          <h1 className="mt-2 text-2xl font-extrabold tracking-tight">{subscription.name}</h1>
-          <dl className="mt-5 grid gap-3 text-sm">
-            <InfoRow label="Potensiell sparing" value={`${subscription.monthlyCost} kr/mnd`} />
-            <InfoRow label="Status" value={getPublicCancellationState(request?.status)} />
-            <InfoRow label="Anbefalt metode" value={guide ? getCancellationGuideMethodLabel(guide.method) : "Manuell kontakt"} />
-          </dl>
+      <ProviderSummary guide={guide} request={request} subscription={subscription} />
 
-          <ProviderGuidance guide={guide} />
-
-          <div className="mt-5 rounded-xl bg-[#FFF6E8] p-4 text-sm font-semibold leading-6 text-[#8A4B13]">
-            Ikke alle leverandører godtar oppsigelse på e-post. Bruk anbefalt metode når Aboslutt kjenner den.
-          </div>
-
-          <div className="mt-5 rounded-xl bg-[#FFF6E8] p-4 text-sm leading-6 text-[#8A4B13]">
-            Aboslutt sender bare e-post på dine vegne når du godkjenner det. Abonnementet regnes ikke som avsluttet før leverandøren bekrefter det.
-          </div>
-          {!canSend ? (
-            <div className="mt-4">
-              <PremiumFeatureGate
-                benefit="Premium lar deg sende oppsigelser via Aboslutt når leverandøren støtter e-postmetoden."
-                blockedAction="Sending via Aboslutt er ikke tilgjengelig i gratisplanen."
-                description="Du kan fortsatt lage og kopiere oppsigelsesutkastet gratis."
-                title="Sending krever Premium"
-              />
+      <nav aria-label="Fremdrift" className="mt-5 grid grid-cols-3 gap-2">
+        {["Velg metode", "Kontroller", "Følg opp"].map((label, index) => {
+          const number = index + 1;
+          return (
+            <div className={`rounded-xl px-3 py-2 text-center text-xs font-bold ${step >= number ? "bg-[#0D1B2A] text-white" : "bg-white text-[#5F6F82] ring-1 ring-[#DBE4EE]"}`} key={label}>
+              {number}. {label}
             </div>
-          ) : null}
-        </aside>
+          );
+        })}
+      </nav>
 
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
-          <form className="grid gap-4" onSubmit={saveDraft}>
-            <div className="grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE] sm:p-6">
+        {step === 1 ? (
+          <section>
+            <p className="text-xs font-bold uppercase text-[#C8102E]">Steg 1</p>
+            <h1 className="mt-2 text-2xl font-extrabold">Velg hvordan du vil avslutte</h1>
+            <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+              Vi anbefaler den tryggeste verifiserte metoden for denne leverandøren.
+            </p>
+            <div className="mt-5 grid gap-3">
+              {modes.map((item) => (
+                <label className={`flex cursor-pointer gap-3 rounded-xl border p-4 ${mode === item.mode ? "border-[#C8102E] bg-[#FFF7F8]" : "border-[#DBE4EE]"}`} key={item.mode}>
+                  <input checked={mode === item.mode} name="cancellation-mode" onChange={() => setMode(item.mode)} type="radio" />
+                  <span>
+                    <span className="flex flex-wrap items-center gap-2 font-bold">
+                      {item.label}
+                      {item.mode === recommendedMode ? <span className="rounded-full bg-[#EAF7EF] px-2 py-0.5 text-xs text-[#166534]">Anbefalt</span> : null}
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-[#5F6F82]">{item.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <button className="mt-5 rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#A90D27]" onClick={() => setStep(2)} type="button">
+              Fortsett
+            </button>
+          </section>
+        ) : null}
+
+        {step === 2 ? (
+          <form onSubmit={saveDraft}>
+            <p className="text-xs font-bold uppercase text-[#C8102E]">Steg 2</p>
+            <h1 className="mt-2 text-2xl font-extrabold">Kontroller oppsigelsen</h1>
+            <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+              Kontroller opplysningene. Sending eller åpning av en leverandørside garanterer ikke at oppsigelsen blir godkjent.
+            </p>
+
+            {guide && mode !== "aboslutt_email" ? (
+              <details className="mt-5 rounded-xl border border-[#DBE4EE] p-4">
+                <summary className="cursor-pointer text-sm font-bold">Vis leverandørens veiledning</summary>
+                <ol className="mt-4 grid gap-3">
+                  {guide.instructions.map((instruction, index) => (
+                    <li className="flex gap-3 text-sm leading-6 text-[#4A5568]" key={`${index}-${instruction}`}>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0D1B2A] text-xs font-bold text-white">{index + 1}</span>
+                      <span>{instruction}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null}
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <TextInput label="Ditt navn" onChange={(value) => updateForm("customerName", value)} required value={form.customerName} />
               <TextInput label="Din e-post" onChange={(value) => updateForm("customerEmail", value)} required type="email" value={form.customerEmail} />
-            </div>
-
-            <label className="text-sm font-semibold text-[#4A5568]">
-              Oppsigelsesmetode
-              <select
-                className="mt-2 w-full rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-                onChange={(event) => updateForm("method", event.target.value)}
-                value={form.method}
-              >
-                <option value="email">E-post</option>
-                <option value="account_page">Kontoside</option>
-                <option value="contact_form">Kontaktskjema</option>
-                <option value="chat">Chat</option>
-                <option value="app_store">App Store / Google Play</option>
-                <option value="partner_billing">Partnerfakturering</option>
-                <option value="manual_unknown">Må bekreftes manuelt</option>
-              </select>
-            </label>
-
-            {form.method === "email" ? (
               <TextInput
-                helperText="Kun bruk e-post hvis leverandøren faktisk aksepterer oppsigelse på e-post."
-                label="Mottaker e-post"
-                onChange={(value) => updateForm("recipientEmail", value)}
-                required
-                type="email"
-                value={form.recipientEmail}
+                label={guide?.requiresCustomerReference ? "Kundenummer / medlemsreferanse" : "Kundenummer / medlemsreferanse (valgfritt)"}
+                onChange={(value) => updateForm("customerNumber", value)}
+                required={guide?.requiresCustomerReference}
+                value={form.customerNumber}
               />
-            ) : (
-              <ManualMethodBox guide={guide} method={form.method} />
-            )}
-
-            <details className="rounded-xl bg-[#F7F9FC] p-4">
-              <summary className="cursor-pointer text-sm font-extrabold text-[#0D1B2A]">Flere detaljer</summary>
-              <div className="mt-4 grid gap-4">
-                <TextInput
-                  helperText="Valgfritt. Noen leverandører ber om kundenummer, medlemsnummer eller referanse."
-                  label="Kundenummer / medlemsnummer (valgfritt)"
-                  onChange={(value) => updateForm("customerNumber", value)}
-                  value={form.customerNumber}
-                />
-                <label className="text-sm font-semibold text-[#4A5568]">
-                  Ekstra beskjed (valgfritt)
-                  <textarea
-                    className="mt-2 min-h-28 w-full rounded-xl border border-[#DBE4EE] bg-white px-4 py-3 text-sm leading-6 text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-                    onChange={(event) => updateForm("extraNote", event.target.value)}
-                    value={form.extraNote}
-                  />
-                </label>
-              </div>
-            </details>
-
-            <TextInput label="Emne" onChange={(value) => updateForm("subject", value)} required value={form.subject} />
-            <label className="text-sm font-semibold text-[#4A5568]">
-              E-postutkast
-              <textarea
-                className="mt-2 min-h-72 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm leading-6 text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-                onChange={(event) => updateForm("body", event.target.value)}
-                required
-                value={form.body}
-              />
+              <TextInput label="Ønsket sluttdato (valgfritt)" onChange={(value) => updateForm("requestedEndDate", value)} type="date" value={form.requestedEndDate} />
+            </div>
+            <TextInput className="mt-4" label="Emne" onChange={(value) => updateForm("subject", value)} required value={form.subject} />
+            <label className="mt-4 block text-sm font-semibold text-[#4A5568]">
+              Melding
+              <textarea className="mt-2 min-h-56 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm leading-6 outline-none focus:border-[#0D1B2A] focus:ring-2 focus:ring-[#0D1B2A]/15" onChange={(event) => updateForm("body", event.target.value)} required value={form.body} />
             </label>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold hover:border-[#C8102E]/50" disabled={isWorking} type="submit">
-                Lagre utkast
+            {mode === "aboslutt_email" && request ? (
+              <label className="mt-5 flex items-start gap-3 rounded-xl bg-[#F7F9FC] p-4 text-sm font-semibold leading-6">
+                <input checked={authorizationConfirmed} className="mt-1 h-5 w-5 accent-[#C8102E]" onChange={(event) => setAuthorizationConfirmed(event.target.checked)} type="checkbox" />
+                <span>Jeg gir Aboslutt begrenset fullmakt til å sende denne oppsigelsen én gang på mine vegne. Jeg forstår at leverandøren må bekrefte avslutningen.</span>
+              </label>
+            ) : null}
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              {!request ? (
+                <button className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white disabled:opacity-50" disabled={isWorking} type="submit">
+                  {isWorking ? "Klargjør …" : "Klargjør oppsigelsen"}
+                </button>
+              ) : mode === "aboslutt_email" ? (
+                <button className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white disabled:opacity-50" disabled={isWorking || !authorizationConfirmed} onClick={sendViaAboslutt} type="button">
+                  {isWorking ? "Sender …" : "Send via Aboslutt"}
+                </button>
+              ) : mode === "provider_portal" ? (
+                <>
+                  {guide?.officialUrl ? (
+                    <Link className="rounded-xl bg-[#C8102E] px-5 py-3 text-center text-sm font-bold text-white" href={guide.officialUrl} rel="noopener noreferrer" target="_blank">
+                      Åpne leverandørens side
+                    </Link>
+                  ) : null}
+                  <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold" disabled={isWorking} onClick={markSent} type="button">
+                    Jeg har sendt oppsigelsen
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white" onClick={copyDraft} type="button">
+                    Kopier utkast
+                  </button>
+                  <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold" disabled={isWorking} onClick={markSent} type="button">
+                    Jeg har sendt oppsigelsen
+                  </button>
+                </>
+              )}
+              <button className="rounded-xl px-3 py-3 text-sm font-bold text-[#5F6F82]" onClick={() => { setRequest(null); setStep(1); }} type="button">
+                Endre metode
               </button>
-              <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold hover:border-[#C8102E]/50" onClick={copyDraft} type="button">
-                Kopier utkast
-              </button>
-              {guide?.officialUrl ? (
-                <Link
-                  className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-center text-sm font-bold text-white hover:bg-[#13263a]"
-                  href={guide.officialUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Åpne oppsigelsesside
-                </Link>
-              ) : null}
             </div>
           </form>
+        ) : null}
 
-          {showManualPrimary ? (
-            <div className="mt-6 rounded-2xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-              Denne leverandøren ser ut til å kreve at du bruker kontoside, app, chat eller kundeservice. Lagre gjerne utkastet som hjelp, men bruk leverandørens anbefalte metode først.
-            </div>
-          ) : null}
-
-          {request && form.method !== "email" && !["awaiting_confirmation", "confirmed_cancelled"].includes(request.status) ? (
-            <div className="mt-6 rounded-2xl border border-[#DBE4EE] bg-white p-4">
-              <h2 className="text-sm font-extrabold">Har du sendt oppsigelsen?</h2>
-              <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
-                Bekreft først etter at du har fullført trinnene hos leverandøren. Dette markerer bare forespørselen som sendt.
-              </p>
-              <button
-                className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#13263a] disabled:opacity-50"
-                disabled={isWorking}
-                onClick={markRequestSent}
-                type="button"
-              >
-                Jeg har sendt oppsigelsen
+        {step === 3 && request ? (
+          <section>
+            <p className="text-xs font-bold uppercase text-[#C8102E]">Steg 3</p>
+            <h1 className="mt-2 text-2xl font-extrabold">Følg opp</h1>
+            <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+              Oppsigelsen er sendt eller registrert som sendt. Abonnementet avsluttes først når leverandøren bekrefter det.
+            </p>
+            <dl className="mt-5 grid gap-3 rounded-xl bg-[#F7F9FC] p-4 text-sm sm:grid-cols-2">
+              <InfoRow label="Status" value={getPublicCancellationState(request.status)} />
+              <InfoRow label="Sendt" value={request.sentAt ? formatDateTime(request.sentAt) : "Registrert"} />
+              {request.delivery?.recipient ? <InfoRow label="Mottaker" value={request.delivery.recipient} /> : null}
+              {request.delivery ? <InfoRow label="Levering" value={getDeliveryLabel(request.delivery.deliveryStatus)} /> : null}
+            </dl>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <button className="rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white disabled:opacity-50" disabled={isWorking || request.status === "confirmed_cancelled"} onClick={() => updateStatus("confirmed_cancelled")} type="button">
+                Bekreft avsluttet
+              </button>
+              <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold" onClick={downloadDocumentation} type="button">
+                Last ned dokumentasjon
+              </button>
+              <button className="rounded-xl px-3 py-3 text-sm font-bold text-[#5F6F82]" disabled={isWorking} onClick={() => updateStatus("manual_required")} type="button">
+                Krever manuell handling
               </button>
             </div>
-          ) : null}
+            <details className="mt-5 rounded-xl border border-[#DBE4EE] p-4">
+              <summary className="cursor-pointer text-sm font-bold">Vis hendelser</summary>
+              <CancellationTimeline events={request.events ?? []} />
+            </details>
+          </section>
+        ) : null}
 
-          <div className="mt-6 border-t border-[#DBE4EE] pt-5">
-            <label className="flex items-start gap-3 rounded-xl bg-[#F7F9FC] p-4 text-sm font-semibold text-[#0D1B2A]">
-              <input
-                checked={consentConfirmed}
-                className="mt-1 h-5 w-5 accent-[#C8102E]"
-                onChange={(event) => setConsentConfirmed(event.target.checked)}
-                type="checkbox"
-              />
-              <span>Jeg bekrefter at jeg ønsker at Aboslutt sender denne oppsigelsen på mine vegne.</span>
-            </label>
-            <button
-              className="mt-4 w-full rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white hover:bg-[#a90d27] disabled:opacity-50"
-              disabled={!canSend || !request || !consentConfirmed || !canSendEmailMethod || isWorking}
-              onClick={sendEmail}
-              type="button"
-            >
-              Send oppsigelse via Aboslutt
-            </button>
-            {!canSendEmailMethod ? (
-              <p className="mt-2 text-xs font-semibold text-[#5F6F82]">
-                Sending via Aboslutt krever en gyldig mottakeradresse. For denne leverandøren kan oppsigelse via kontoside eller app være riktigere.
-              </p>
-            ) : null}
-          </div>
-
-          {request ? (
-            <div className="mt-6 rounded-2xl bg-[#F7F9FC] p-4">
-              <h2 className="text-sm font-extrabold">Oppfølging</h2>
-              <p className="mt-2 text-sm text-[#5F6F82]">
-                Når leverandøren svarer, oppdaterer du status her. Først da markeres abonnementet som avsluttet.
-              </p>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <StatusButton disabled={isWorking} label="Bekreftet avsluttet" onClick={() => updateStatus("confirmed_cancelled")} />
-                <StatusButton disabled={isWorking} label="Avvist" onClick={() => updateStatus("rejected")} />
-                <StatusButton disabled={isWorking} label="Krever manuell handling" onClick={() => updateStatus("manual_required")} />
-              </div>
-            </div>
-          ) : null}
-
-          {request ? (
-            <section className="mt-6 rounded-2xl bg-white p-4 ring-1 ring-[#DBE4EE]">
-              <h2 className="text-sm font-extrabold">Tidslinje</h2>
-              <CancellationTimeline events={request.events ?? []} status={request.status} />
-              <div className="mt-5 border-t border-[#DBE4EE] pt-4">
-                <label className="text-sm font-semibold text-[#4A5568]">
-                  Legg til notat
-                  <textarea
-                    className="mt-2 min-h-24 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm leading-6 text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="F.eks. Leverandør svarte at jeg må logge inn og avslutte selv."
-                    value={note}
-                  />
-                </label>
-                <button
-                  className="mt-3 rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold hover:border-[#C8102E]/50 disabled:opacity-50"
-                  disabled={isWorking || !note.trim()}
-                  onClick={addNote}
-                  type="button"
-                >
-                  Legg til notat
-                </button>
-              </div>
-            </section>
-          ) : null}
-
-          {message ? (
-            <p className="mt-4 rounded-xl bg-[#F0F4F8] px-4 py-3 text-sm font-semibold text-[#0D1B2A]">
-              {message}
-            </p>
-          ) : null}
-        </div>
+        {message ? <p className="mt-5 rounded-xl bg-[#F0F4F8] px-4 py-3 text-sm font-semibold">{message}</p> : null}
       </div>
     </section>
   );
 }
 
-function CancellationTimeline({
-  events,
-  status,
+function ProviderSummary({
+  guide,
+  request,
+  subscription,
 }: {
-  events: CancellationEventView[];
-  status: string;
+  guide: ProviderCancellationGuide | null;
+  request: CancellationRequestView | null;
+  subscription: Subscription;
 }) {
-  const fallbackSteps = getFallbackTimeline(status);
-  const visibleEvents = events.length > 0 ? events : fallbackSteps;
+  return (
+    <section className="mt-5 flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE] sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-4">
+        {guide?.logoPath ? (
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white ring-1 ring-[#DBE4EE]">
+            <Image alt="" height={30} src={guide.logoPath} width={30} />
+          </span>
+        ) : (
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0D1B2A] text-sm font-black text-white">
+            {getProviderInitials(guide?.providerName ?? subscription.name)}
+          </span>
+        )}
+        <div>
+          <p className="text-xs font-bold uppercase text-[#C8102E]">Oppsigelse</p>
+          <h1 className="mt-1 text-xl font-extrabold">{guide?.providerName ?? subscription.name}</h1>
+          <p className="mt-1 text-sm text-[#5F6F82]">{subscription.monthlyCost} kr per måned</p>
+        </div>
+      </div>
+      <span className="w-fit rounded-full bg-[#FFF6E8] px-3 py-1.5 text-xs font-bold text-[#8A4B13]">
+        {getPublicCancellationState(request?.status)}
+      </span>
+    </section>
+  );
+}
 
+function CancellationTimeline({ events }: { events: CancellationEventView[] }) {
   return (
     <ol className="mt-4 grid gap-3">
-      {visibleEvents.map((event, index) => (
+      {events.map((event, index) => (
         <li className="flex gap-3" key={event.id}>
-          <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#C8102E] text-xs font-black text-white">
-            {index + 1}
-          </span>
+          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0D1B2A] text-xs font-bold text-white">{index + 1}</span>
           <div>
-            <p className="text-sm font-bold text-[#0D1B2A]">{getCancellationEventLabel(event.type)}</p>
-            <p className="mt-1 text-sm leading-6 text-[#5F6F82]">{event.message}</p>
-            <p className="mt-1 text-xs font-semibold text-[#5F6F82]">{formatTimelineDate(event.createdAt)}</p>
+            <p className="text-sm font-bold">{getCancellationEventLabel(event.type)}</p>
+            <p className="mt-1 text-sm text-[#5F6F82]">{event.message}</p>
+            <p className="mt-1 text-xs text-[#5F6F82]">{formatDateTime(event.createdAt)}</p>
           </div>
         </li>
       ))}
     </ol>
-  );
-}
-
-function ProviderGuidance({ guide }: { guide: ProviderCancellationGuide | null }) {
-  if (!guide) {
-    return (
-      <div className="mt-5 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-        <p className="font-bold text-[#0D1B2A]">Generell oppsigelsesveiledning</p>
-        <p className="mt-1">
-          Vi har ikke en verifisert leverandørguide. Finn den offisielle kontosiden eller kontakt kundeservice, og be om skriftlig bekreftelse.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-5 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-      <div className="flex items-center gap-3">
-        {guide.logoPath ? (
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white ring-1 ring-[#DBE4EE]">
-            <Image alt="" height={26} src={guide.logoPath} width={26} />
-          </span>
-        ) : (
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0D1B2A] text-xs font-black text-white">
-            {getProviderInitials(guide.providerName)}
-          </span>
-        )}
-        <div>
-          <p className="font-bold text-[#0D1B2A]">{guide.providerName}</p>
-          <p className="text-xs font-semibold text-[#5F6F82]">{getCancellationGuideMethodLabel(guide.method)}</p>
-        </div>
-      </div>
-      <ol className="mt-4 grid gap-3">
-        {guide.instructions.map((instruction, index) => (
-          <li className="flex gap-3" key={`${index}-${instruction}`}>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0D1B2A] text-xs font-bold text-white">
-              {index + 1}
-            </span>
-            <span>{instruction}</span>
-          </li>
-        ))}
-      </ol>
-      {guide.requiredInformation.length > 0 ? (
-        <div className="mt-4">
-          <p className="font-bold text-[#0D1B2A]">Dette kan du trenge</p>
-          <ul className="mt-1 list-disc pl-5">
-            {guide.requiredInformation.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-      ) : null}
-      {guide.confirmationExpected ? <p className="mt-4">{guide.confirmationExpected}</p> : null}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#DBE4EE] pt-3 text-xs font-semibold">
-        <span>{formatVerifiedDate(guide.lastVerifiedAt)}</span>
-        <Link href={`mailto:kontakt@aboslutt.no?subject=${encodeURIComponent(`Feil i oppsigelsesguide for ${guide.providerName}`)}`} className="text-[#C8102E] hover:underline">
-          Rapporter feil informasjon
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ManualMethodBox({
-  guide,
-  method,
-}: {
-  guide: ProviderCancellationGuide | null;
-  method: CancellationProviderMethod;
-}) {
-  return (
-    <div className="rounded-xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-      <p className="font-bold text-[#0D1B2A]">{getDraftMethodLabel(method)}</p>
-      <p className="mt-1">
-        E-post er ikke valgt som primær metode. Bruk leverandørens kontoside, app, kontaktskjema eller kundeservice, og kopier utkastet hvis du trenger tekst.
-      </p>
-      {guide?.officialUrl ? (
-        <Link className="mt-3 inline-flex font-bold text-[#C8102E] hover:underline" href={guide.officialUrl} rel="noopener noreferrer" target="_blank">
-          Åpne offisiell side
-        </Link>
-      ) : null}
-    </div>
   );
 }
 
@@ -641,50 +511,68 @@ function TextInput({
   onChange,
   type = "text",
   required = false,
-  helperText,
+  className = "",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   required?: boolean;
-  helperText?: string;
+  className?: string;
 }) {
   return (
-    <label className="text-sm font-semibold text-[#4A5568]">
+    <label className={`block text-sm font-semibold text-[#4A5568] ${className}`}>
       {label}
-      <input
-        className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-        onChange={(event) => onChange(event.target.value)}
-        required={required}
-        type={type}
-        value={value}
-      />
-      {helperText ? <span className="mt-1 block text-xs font-medium text-[#5F6F82]">{helperText}</span> : null}
+      <input className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm outline-none focus:border-[#0D1B2A] focus:ring-2 focus:ring-[#0D1B2A]/15" onChange={(event) => onChange(event.target.value)} required={required} type={type} value={value} />
     </label>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div>
       <dt className="font-semibold text-[#5F6F82]">{label}</dt>
-      <dd className="text-right font-bold">{value}</dd>
+      <dd className="mt-1 break-words font-bold">{value}</dd>
     </div>
   );
 }
 
-function StatusButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) {
-  return (
-    <button
-      className="rounded-xl border border-[#DBE4EE] px-4 py-3 text-sm font-bold text-[#0D1B2A] hover:border-[#C8102E]/50 disabled:opacity-50"
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
-  );
+function getAvailableModes(guide: ProviderCancellationGuide | null, canSend: boolean) {
+  const modes: { mode: CancellationMode; label: string; description: string }[] = [];
+  if (guide?.supportsAbosluttSending && canSend) {
+    modes.push({
+      mode: "aboslutt_email",
+      label: "Send via Aboslutt",
+      description: "Aboslutt sender én e-post fra oppsigelse@aboslutt.no til en verifisert adresse.",
+    });
+  }
+  if (guide?.officialUrl) {
+    modes.push({
+      mode: "provider_portal",
+      label: getCancellationGuideMethodLabel(guide.method),
+      description: guide.requiresProviderLogin
+        ? "Åpne leverandørens side og logg inn for å fullføre oppsigelsen."
+        : "Åpne leverandørens offisielle side og følg veiledningen.",
+    });
+  }
+  modes.push({
+    mode: "manual_draft",
+    label: "Bruk et oppsigelsesutkast",
+    description: "Kopier teksten og send den selv via en kanal leverandøren godtar.",
+  });
+  return modes;
+}
+
+function getRecommendedMode(guide: ProviderCancellationGuide | null, canSend: boolean): CancellationMode {
+  if (guide?.supportsAbosluttSending && canSend) return "aboslutt_email";
+  if (guide?.officialUrl) return "provider_portal";
+  return "manual_draft";
+}
+
+function normalizeMode(value?: string | null): CancellationMode | null {
+  return ["aboslutt_email", "provider_portal", "manual_draft"].includes(value ?? "")
+    ? value as CancellationMode
+    : null;
 }
 
 function createLocalDraft(
@@ -692,135 +580,55 @@ function createLocalDraft(
   customerName: string,
   customerEmail: string,
   customerNumber: string,
-  extraNote: string,
 ) {
   const subject = `Oppsigelse av ${subscriptionName}`;
   const customerNumberLine = customerNumber ? `Kundenummer/medlemsnummer: ${customerNumber}\n` : "";
-  const extraNoteLine = extraNote ? `\nTilleggsinformasjon:\n${extraNote}\n` : "";
-  const body = `Hei,
+  return {
+    subject,
+    body: `Hei,
 
 Jeg ønsker å si opp abonnementet mitt på ${subscriptionName}.
 
 Navn: ${customerName}
 E-post: ${customerEmail}
 ${customerNumberLine}
-${extraNoteLine}
-Vennligst bekreft skriftlig at abonnementet er avsluttet, og oppgi siste dato for eventuell tilgang eller siste fakturaperiode.
+Vennligst bekreft skriftlig at abonnementet er avsluttet, og oppgi siste dato for tilgang eller siste fakturaperiode.
 
 Hilsen
 ${customerName}
 
 --
-Denne oppsigelsen er sendt via Aboslutt på vegne av kunden.`;
-
-  return { subject, body };
+Sendt via Aboslutt på vegne av kunden.`,
+  };
 }
 
-function getInitialMethod(value: string | null | undefined, guide: ProviderCancellationGuide | null): CancellationProviderMethod {
-  const allowedMethods: CancellationProviderMethod[] = [
-    "email",
-    "account_page",
-    "contact_form",
-    "chat",
-    "app_store",
-    "partner_billing",
-    "manual_unknown",
-  ];
-
-  if (value && allowedMethods.includes(value as CancellationProviderMethod)) {
-    return value as CancellationProviderMethod;
-  }
-
-  const guideMethods: Record<CancellationGuideMethod, CancellationProviderMethod> = {
-    website: "account_page",
-    email: "email",
-    phone: "manual_unknown",
-    app: "app_store",
-    manual: "manual_unknown",
-    unknown: "manual_unknown",
-  };
-
-  return guide ? guideMethods[guide.method] : "manual_unknown";
+function isSent(status: string) {
+  return ["sent", "awaiting_confirmation", "confirmed_cancelled", "manual_required", "rejected"].includes(status);
 }
 
 function getPublicCancellationState(status?: string | null) {
   if (!status) return "Oppsigelse ikke startet";
-  if (status === "confirmed_cancelled") return "Abonnement avsluttet";
-  if (["sent", "awaiting_confirmation"].includes(status)) return "Oppsigelse sendt – venter på bekreftelse";
-  return "Oppsigelse pågår";
+  if (status === "ready" || status === "draft") return "Oppsigelse klargjort";
+  if (status === "sent") return "Oppsigelse sendt";
+  if (status === "awaiting_confirmation") return "Venter på bekreftelse";
+  if (status === "confirmed_cancelled") return "Bekreftet avsluttet";
+  if (status === "manual_required" || status === "rejected") return "Krever manuell handling";
+  return "Oppsigelse klargjort";
 }
 
-function getDraftMethodLabel(method: CancellationProviderMethod) {
+function getDeliveryLabel(status: string) {
   return {
-    email: "E-post",
-    account_page: "Nettside",
-    contact_form: "Kontaktskjema",
-    chat: "Chat",
-    app_store: "App",
-    partner_billing: "Partnerfakturering",
-    manual_unknown: "Manuell kontakt",
-  }[method];
+    sending: "Sender",
+    accepted: "Mottatt for levering",
+    delivered: "Levert",
+    failed: "Levering feilet",
+    bounced: "Returnert",
+  }[status] ?? "Ukjent";
 }
 
-function formatVerifiedDate(value: Date | string | null) {
-  if (!value) return "Ikke datoverifisert";
+function formatDateTime(value: Date | string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Ikke datoverifisert";
-  return `Sist verifisert ${date.toLocaleDateString("nb-NO")}`;
-}
-
-function getFallbackTimeline(status: string): CancellationEventView[] {
-  const now = new Date().toISOString();
-  const baseSteps: CancellationEventView[] = [
-    {
-      id: "fallback-draft",
-      type: "draft_created",
-      message: "Utkastet er opprettet.",
-      createdAt: now,
-    },
-    {
-      id: "fallback-ready",
-      type: "ready",
-      message: "Oppsigelsen er klar til sending eller manuell bruk.",
-      createdAt: now,
-    },
-  ];
-
-  if (["awaiting_confirmation", "confirmed_cancelled", "rejected", "manual_required"].includes(status)) {
-    baseSteps.push(
-      {
-        id: "fallback-email-sent",
-        type: "email_sent",
-        message: "Oppsigelsen er sendt på vegne av bruker.",
-        createdAt: now,
-      },
-      {
-        id: "fallback-awaiting",
-        type: "awaiting_confirmation",
-        message: "Venter på bekreftelse fra leverandøren.",
-        createdAt: now,
-      },
-    );
-  }
-
-  if (["confirmed_cancelled", "rejected", "manual_required"].includes(status)) {
-    baseSteps.push({
-      id: `fallback-${status}`,
-      type: status,
-      message: getCancellationStatusLabel(status) ?? "Status er oppdatert.",
-      createdAt: now,
-    });
-  }
-
-  return baseSteps;
-}
-
-function formatTimelineDate(value: Date | string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
+  if (Number.isNaN(date.getTime())) return "Ukjent";
   return new Intl.DateTimeFormat("nb-NO", {
     day: "2-digit",
     month: "short",
