@@ -264,6 +264,7 @@ model PasswordResetToken {
 
 model Subscription {
   id          String   @id @default(cuid())
+  providerId  String?
   name        String
   normalizedName String?
   category    String
@@ -278,14 +279,41 @@ model Subscription {
   updatedAt   DateTime @updatedAt
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    SubscriptionProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   reminderLogs ReminderLog[]
   cancellationRequests CancellationRequest[]
 
   @@index([userId])
+  @@index([providerId])
   @@index([normalizedName])
   @@index([category])
   @@index([status])
   @@index([billingInterval])
+}
+
+model SubscriptionProvider {
+  id                       String   @id @default(cuid())
+  name                     String
+  slug                     String   @unique
+  category                 String
+  aliases                  String[] @default([])
+  senderNames              String[] @default([])
+  emailDomains             String[] @default([])
+  logoPath                 String?
+  websiteUrl               String?
+  accountManagementUrl     String?
+  cancellationUrl          String?
+  defaultBillingInterval   String?
+  supportedCountries       String[] @default(["NO"])
+  isActive                 Boolean  @default(true)
+  lastVerifiedAt           DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  subscriptions            Subscription[]
+
+  @@index([name])
+  @@index([category])
+  @@index([isActive])
 }
 
 model CancellationRequest {

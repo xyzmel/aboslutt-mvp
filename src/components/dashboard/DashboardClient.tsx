@@ -7,6 +7,7 @@ import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog"
 import { ConfirmCancellation } from "@/components/cancellation/ConfirmCancellation";
 import { SuccessScreen } from "@/components/cancellation/SuccessScreen";
 import { SubscriptionCard } from "@/components/dashboard/SubscriptionCard";
+import { ProviderCombobox, type ProviderOption } from "@/components/subscriptions/ProviderCombobox";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
@@ -18,6 +19,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { trackFunnelEvent } from "@/lib/analytics";
 import { getCancellationStatusLabel } from "@/lib/cancellation";
 import { getSubscriptionLifecycle, shouldIncludeUpcomingPayment } from "@/lib/subscription-lifecycle.mjs";
+import { applyProviderSelectionToDraft } from "@/lib/subscription-provider-catalog.mjs";
 import {
   formatDateForShortDisplay,
   normalizeDateInputValue,
@@ -39,6 +41,7 @@ type UpcomingPayment = {
 };
 
 type SubscriptionForm = {
+  providerId: string | null;
   name: string;
   category: SubscriptionCategory;
   monthlyCost: string;
@@ -67,6 +70,7 @@ const filters: { value: CategoryFilter; label: string }[] = [
 ];
 
 const defaultForm: SubscriptionForm = {
+  providerId: null,
   name: "",
   category: "streaming",
   monthlyCost: "",
@@ -395,6 +399,7 @@ export function DashboardClient() {
     setEditingSubscription(subscription);
     setEditFormErrors({});
     setEditForm({
+      providerId: subscription.providerId ?? null,
       name: subscription.name,
       category: subscription.category,
       monthlyCost: String(subscription.monthlyCost),
@@ -745,15 +750,14 @@ export function DashboardClient() {
                 Registrer abonnementet manuelt med pris, kategori og neste trekk.
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-6">
-                <TextInput
-                  autoComplete="organization"
+                <ProviderCombobox
                   error={formErrors.name}
-                  label="Navn"
                   onChange={(value) => {
                     setForm((current) => ({ ...current, name: value }));
                     setFormErrors((current) => ({ ...current, name: undefined }));
                   }}
-                  placeholder="F.eks. HBO Max"
+                  onSelect={(provider) => applyProviderSuggestion(provider, setForm)}
+                  selectedProviderId={form.providerId}
                   value={form.name}
                 />
                 <TextInput
@@ -1541,6 +1545,15 @@ function validateSubscriptionForm(form: SubscriptionForm): SubscriptionFormError
   return errors;
 }
 
+function applyProviderSuggestion(
+  provider: ProviderOption | null,
+  setForm: Dispatch<SetStateAction<SubscriptionForm>>,
+) {
+  setForm((current) => {
+    return applyProviderSelectionToDraft(current, provider) as SubscriptionForm;
+  });
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(value);
 }
@@ -1692,11 +1705,11 @@ function SubscriptionEditModal({
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <TextInput
+          <ProviderCombobox
             error={errors.name}
-            label="Navn"
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
-            placeholder="F.eks. HBO Max"
+            onSelect={(provider) => applyProviderSuggestion(provider, setForm)}
+            selectedProviderId={form.providerId}
             value={form.name}
           />
           <TextInput

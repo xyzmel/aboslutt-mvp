@@ -6,6 +6,14 @@ export type BillingInterval = "monthly" | "yearly" | "unknown";
 
 export type Subscription = {
   id: string;
+  providerId?: string | null;
+  provider?: {
+    id: string;
+    name: string;
+    slug: string;
+    category: string;
+    logoPath?: string | null;
+  } | null;
   name: string;
   normalizedName?: string | null;
   category: SubscriptionCategory;

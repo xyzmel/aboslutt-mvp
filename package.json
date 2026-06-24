@@ -15,12 +15,19 @@
     "test:auth-account-linking": "node --test scripts/test-auth-account-linking.mjs",
     "test:billing-outlook-state": "node --test scripts/test-billing-outlook-state.mjs",
     "test:subscription-lifecycle": "node --test scripts/test-subscription-lifecycle.mjs",
+    "test:provider-catalog": "node --test scripts/test-subscription-provider-catalog.mjs",
+    "test:unit": "npm run test:launch && npm run test:billing && npm run test:microsoft-import && npm run test:analytics && npm run test:auth-providers && npm run test:auth-account-linking && npm run test:billing-outlook-state && npm run test:subscription-lifecycle && npm run test:provider-catalog",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "check:text": "node scripts/check-text-encoding.mjs",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "node scripts/check-database-url.mjs && prisma migrate deploy",
     "prisma:seed": "node scripts/check-database-url.mjs && prisma db seed",
+    "providers:match": "node scripts/match-subscription-providers.mjs",
     "prisma:reset": "prisma migrate reset --force"
   },
   "prisma": {
@@ -40,6 +47,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -103,6 +103,32 @@ Vercel Speed Insights lastes bare i deployede miljøer gjennom App Router-integr
 
 ## Subscription Management
 
+### Subscription provider catalog
+
+Common providers live in the global `SubscriptionProvider` catalog. User subscriptions may reference a catalog row through the optional `providerId`, while `Subscription.name` remains the user-visible name and continues to support custom providers.
+
+The dashboard provider combobox searches canonical names, aliases, sender names, and email domains. Catalog selection suggests the existing Aboslutt category and a default billing interval when available. It never fills or overwrites price and next-payment date.
+
+Provider logos must be reviewed local files under `public/providers/`. Store paths as `/providers/<file>`. Missing or invalid logo files use an initials fallback.
+
+Administrators maintain the catalog at `/admin/providers`. Ordinary users cannot create, edit, enable, or disable global providers.
+
+Seed and inspect the catalog:
+
+```powershell
+npm.cmd run prisma:deploy
+npm.cmd run prisma:seed
+npm.cmd run providers:match
+```
+
+`providers:match` is report-only by default. It reports exact unique matches, unmatched subscriptions, and ambiguous subscriptions without changing data. Apply only the exact unique links after reviewing the report:
+
+```powershell
+npm.cmd run providers:match -- --apply --report=provider-match-report.json
+```
+
+The matching task never deletes or renames subscription data.
+
 Aboslutt har manuell abonnementshåndtering som kjernefunksjon. Brukeren kan legge til og redigere aktive abonnementer uten å koble til Gmail.
 
 Abonnementer har nå navn, månedlig kostnad, kategori, status, faktureringsintervall, neste trekk, notat, kilde og eventuell import-confidence. Faktureringsintervall lagres som `monthly`, `yearly` eller `unknown`, og vises i UI som `Månedlig`, `Årlig` eller `Ukjent`.
@@ -720,6 +746,46 @@ SQLite var kun for tidlig lokal MVP-testing. Hovedskjemaet bruker nå Postgres. 
 - Hvis magic link ikke mottas, sjekk spam/promotions, Resend/Brevo sending logs, domenestatus og at `EMAIL_FROM` bruker et verifisert domene.
 
 ## Kvalitetssjekk
+
+### Playwright end-to-end
+
+Playwright tester den optimaliserte produksjonsbygningen og de viktigste kundereisene:
+
+- registrering, innlogging, utlogging, ugyldig passord, passordreset og beskyttede ruter
+- oppretting, redigering, oppsigelse, fullføring og permanent sletting av abonnement
+- gratis-, Premium- og utløpt historisk betalingsstatus
+- synkroniserte Gmail/Outlook-kort, tilkoblet/frakoblet/utløpt og frakobling
+- Vipps-start og sidene for ventende, avbrutt, feilet, utløpt og bekreftet betaling
+- stabile lastetilstander, beskyttelse mot dobbeltklikk og horisontal overflow ved 375 px
+
+Testene oppretter og sletter egne data. De krever derfor en separat, disponibel Postgres-database:
+
+```powershell
+$env:E2E_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/aboslutt_e2e"
+npx playwright install chromium
+npm.cmd run test:e2e
+```
+
+`E2E_DATABASE_URL` kan aldri være lik vanlig `DATABASE_URL`. Eksterne testdatabaser må ha `e2e`, `test` eller `playwright` i databasenavnet. En eksplisitt godkjent ekstern testgren kan i stedet bruke `E2E_ALLOW_REMOTE_DATABASE=true`. Kjør aldri suiten mot produksjonsdatabasen.
+
+Testserveren kjører Prisma-migreringer, bygger Next.js for produksjon og starter på `http://127.0.0.1:3100`. `E2E_SKIP_BUILD=true` kan brukes lokalt bare når en samsvarende produksjonsbygning allerede finnes.
+
+Eksterne avhengigheter holdes deterministiske:
+
+- Microsoft/Outlook-status og frakobling mockes i nettleseren.
+- Gmail testes med produksjonsflagget deaktivert.
+- Vipps-redirect og returstatuser mockes der ekstern godkjenning ellers kreves.
+- Lokale BillingAgreement-rader bekrefter at ventende status ikke gir Premium, mens bekreftet aktiv status gjør det.
+
+Feilrapporter lagres i `playwright-report/` og `test-results/playwright/`. Spor, skjermbilder og video beholdes bare ved feil. CI bruker en disponibel PostgreSQL 16-tjeneste og feiler når en kritisk kundereise feiler.
+
+```powershell
+npm.cmd run test:unit
+npm.cmd run test:e2e
+npm.cmd run test:e2e:headed
+npm.cmd run test:e2e:ui
+npm.cmd run test:e2e:report
+```
 
 ```bash
 npm run check:text

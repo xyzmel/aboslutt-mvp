@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { subscriptionProviderSeed } from "../src/data/subscription-providers.mjs";
 
 const prisma = new PrismaClient();
 
@@ -72,6 +73,14 @@ const demoSubscriptions = [
 ];
 
 async function main() {
+  for (const provider of subscriptionProviderSeed) {
+    await prisma.subscriptionProvider.upsert({
+      where: { slug: provider.slug },
+      update: provider,
+      create: provider,
+    });
+  }
+
   const demoUser = await prisma.user.upsert({
     where: { email: "demo@aboslutt.local" },
     update: {},

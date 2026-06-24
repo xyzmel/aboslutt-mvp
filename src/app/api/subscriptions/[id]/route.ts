@@ -19,6 +19,7 @@ const allowedBillingIntervals: BillingInterval[] = ["monthly", "yearly", "unknow
 
 const subscriptionSelect = {
   id: true,
+  providerId: true,
   name: true,
   normalizedName: true,
   category: true,
@@ -34,6 +35,9 @@ const subscriptionSelect = {
     orderBy: { updatedAt: "desc" },
     take: 1,
     select: { id: true, status: true, sentAt: true, updatedAt: true },
+  },
+  provider: {
+    select: { id: true, name: true, slug: true, category: true, logoPath: true },
   },
 } as const;
 
@@ -67,6 +71,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const payload = await request.json();
   const data: {
+    providerId?: string | null;
     name?: string;
     normalizedName?: string | null;
     category?: SubscriptionCategory;
@@ -77,7 +82,25 @@ export async function PATCH(request: Request, context: RouteContext) {
     note?: string | null;
   } = {};
 
-  if (typeof payload.name === "string") {
+  if (payload.providerId !== undefined) {
+    const providerId = typeof payload.providerId === "string" ? payload.providerId.trim() : "";
+    if (!providerId) {
+      data.providerId = null;
+    } else {
+      const provider = await prisma.subscriptionProvider.findFirst({
+        where: { id: providerId, isActive: true },
+        select: { id: true, name: true },
+      });
+      if (!provider) {
+        return NextResponse.json({ error: "Ugyldig leverandør." }, { status: 400 });
+      }
+      data.providerId = provider.id;
+      data.name = provider.name;
+      data.normalizedName = normalizeMerchantKey(provider.name);
+    }
+  }
+
+  if (typeof payload.name === "string" && !data.providerId) {
     const name = payload.name.trim();
     if (!name) {
       return NextResponse.json({ error: "Navn kan ikke være tomt." }, { status: 400 });

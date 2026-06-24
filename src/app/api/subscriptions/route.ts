@@ -17,6 +17,7 @@ const allowedBillingIntervals: BillingInterval[] = ["monthly", "yearly", "unknow
 
 const subscriptionSelect = {
   id: true,
+  providerId: true,
   name: true,
   normalizedName: true,
   category: true,
@@ -32,6 +33,9 @@ const subscriptionSelect = {
     orderBy: { updatedAt: "desc" },
     take: 1,
     select: { id: true, status: true, sentAt: true, updatedAt: true },
+  },
+  provider: {
+    select: { id: true, name: true, slug: true, category: true, logoPath: true },
   },
 } as const;
 
@@ -61,12 +65,23 @@ export async function POST(request: Request) {
   }
 
   const payload = await request.json();
+  const requestedProviderId = typeof payload.providerId === "string" ? payload.providerId.trim() : "";
+  const selectedProvider = requestedProviderId
+    ? await prisma.subscriptionProvider.findFirst({
+        where: { id: requestedProviderId, isActive: true },
+        select: { id: true, name: true },
+      })
+    : null;
+  if (requestedProviderId && !selectedProvider) {
+    return NextResponse.json({ error: "Ugyldig leverandør." }, { status: 400 });
+  }
   const requestedName =
-    typeof payload.merchantName === "string"
+    selectedProvider?.name ??
+    (typeof payload.merchantName === "string"
       ? payload.merchantName.trim()
       : typeof payload.name === "string"
         ? payload.name.trim()
-        : "";
+        : "");
   const normalizedName = normalizeMerchantName(requestedName);
   const nextPayment = typeof payload.nextPayment === "string" ? payload.nextPayment.trim() : "";
   const note =
@@ -140,6 +155,7 @@ export async function POST(request: Request) {
   const subscription = await prisma.subscription.create({
     data: {
       name: normalizedName,
+      providerId: selectedProvider?.id ?? null,
       normalizedName: normalizeMerchantKey(normalizedName),
       category,
       monthlyCost,
