@@ -84,11 +84,12 @@ const negativeSignals = [
 
 /**
  * @param {OutlookMessage[]} messages
+ * @param {Record<string, { canonicalName: string }>} [providerHints]
  * @returns {OutlookSubscriptionCandidate[]}
  */
-export function detectOutlookSubscriptionCandidates(messages) {
+export function detectOutlookSubscriptionCandidates(messages, providerHints = {}) {
   const detected = messages
-    .map((message) => detectMessage(message))
+    .map((message) => detectMessage(message, providerHints[message.id]))
     .filter((candidate) => candidate !== null);
 
   return groupCandidates(detected);
@@ -96,9 +97,10 @@ export function detectOutlookSubscriptionCandidates(messages) {
 
 /**
  * @param {OutlookMessage} message
+ * @param {{ canonicalName: string } | undefined} [providerHint]
  * @returns {OutlookSubscriptionCandidate | null}
  */
-export function detectMessage(message) {
+export function detectMessage(message, providerHint) {
   const subject = sanitizeText(message.subject ?? "");
   const preview = sanitizeText(message.bodyPreview ?? "");
   const fromAddress = sanitizeText(message.from?.emailAddress?.address ?? "");
@@ -111,7 +113,9 @@ export function detectMessage(message) {
     return null;
   }
 
-  const provider = detectProvider(normalized, fromName, senderDomain);
+  const provider = providerHint
+    ? { name: providerHint.canonicalName, known: true }
+    : detectProvider(normalized, fromName, senderDomain);
   const amount = extractAmountAndCurrency(combinedText);
   const billingInterval = detectBillingInterval(combinedText);
   const signalResult = scoreSignals(normalized);

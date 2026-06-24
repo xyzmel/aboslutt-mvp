@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import type { Prisma } from "@prisma/client";
 import Link from "next/link";
 import { AdminProviderCatalog } from "@/components/admin/AdminProviderCatalog";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { AdminForbiddenError, requireAdminUser } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
+import { getCancellationGuideCoverage } from "@/lib/provider-cancellation-guide.mjs";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Leverandørkatalog", robots: { index: false, follow: false } };
@@ -18,8 +20,19 @@ export default async function AdminProvidersPage() {
     return <AdminMessage title="Kunne ikke laste leverandørkatalogen." />;
   }
 
-  const providers = await prisma.subscriptionProvider.findMany({ orderBy: [{ isActive: "desc" }, { name: "asc" }] });
+  const [providers, unmatchedSignals] = await Promise.all([
+    prisma.subscriptionProvider.findMany({
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      include: { _count: { select: { subscriptions: true } } },
+    }),
+    prisma.unmatchedProviderSignal.findMany({
+      orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],
+      take: 50,
+      select: { id: true, displayName: true, source: true, count: true, lastSeenAt: true },
+    }),
+  ]);
 
+  const coverage = getCancellationGuideCoverage(providers);
   return (
     <main className="min-h-screen bg-[#F0F4F8] text-[#0D1B2A]">
       <AppHeader adminSection maxWidthClassName="max-w-7xl" />
@@ -34,14 +47,38 @@ export default async function AdminProvidersPage() {
           </div>
           <Link className="text-sm font-bold text-[#C8102E] hover:underline" href="/admin">Til produktoversikt</Link>
         </div>
-        <AdminProviderCatalog initialProviders={providers.map(serializeProvider)} />
+        <AdminProviderCatalog
+          initialProviders={providers.map(serializeProvider)}
+          unmatchedSignals={unmatchedSignals.map((signal) => ({
+            ...signal,
+            lastSeenAt: signal.lastSeenAt.toISOString(),
+          }))}
+          coverage={{
+            complete: coverage.withCompleteGuides.map(toCoverageItem),
+            missing: coverage.missingGuides.map(toCoverageItem),
+            missingLogos: coverage.missingLogos.map(toCoverageItem),
+            stale: coverage.staleGuides.map(toCoverageItem),
+            mostUsed: [...providers]
+              .sort((a, b) => b._count.subscriptions - a._count.subscriptions)
+              .slice(0, 10)
+              .map(toCoverageItem),
+          }}
+        />
       </section>
     </main>
   );
 }
 
-function serializeProvider(provider: Awaited<ReturnType<typeof prisma.subscriptionProvider.findMany>>[number]) {
-  return { ...provider, lastVerifiedAt: provider.lastVerifiedAt?.toISOString() ?? null };
+type ProviderWithCount = Prisma.SubscriptionProviderGetPayload<{
+  include: { _count: { select: { subscriptions: true } } };
+}>;
+
+function serializeProvider(provider: ProviderWithCount) {
+  return { ...provider, _count: undefined, lastVerifiedAt: provider.lastVerifiedAt?.toISOString() ?? null };
+}
+
+function toCoverageItem(provider: ProviderWithCount) {
+  return { id: provider.id, name: provider.name, subscriptionCount: provider._count.subscriptions };
 }
 
 function AdminMessage({ title }: { title: string }) {

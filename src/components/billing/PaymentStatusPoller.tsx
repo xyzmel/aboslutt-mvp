@@ -167,7 +167,7 @@ export function PaymentStatusPoller({ returnContext = "thanks" }: { returnContex
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#C8102E] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#a90d27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E] focus-visible:ring-offset-2"
             href="/dashboard"
           >
-            Gå til oversikt
+            Åpne oversikten
           </Link>
         ) : null}
 

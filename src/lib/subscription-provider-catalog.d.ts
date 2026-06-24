@@ -7,6 +7,13 @@ export type CatalogProvider = {
   senderNames: string[];
   emailDomains: string[];
   logoPath?: string | null;
+  cancellationMethod?: string | null;
+  cancellationInstructions?: string[];
+  requiredInformation?: string[];
+  confirmationExpected?: string | null;
+  countryCode?: string | null;
+  verificationSource?: string | null;
+  isCancellationGuideActive?: boolean;
   defaultBillingInterval?: string | null;
   isActive?: boolean;
 };
@@ -18,6 +25,12 @@ export function getProviderInitials(name: unknown): string;
 export function applyProviderSelectionToDraft<T extends Record<string, unknown>>(
   draft: T,
   provider: (CatalogProvider & { id: string; suggestedCategory?: string }) | null,
+  dirtyFields?: {
+    category?: boolean;
+    billingInterval?: boolean;
+    monthlyCost?: boolean;
+    nextPayment?: boolean;
+  },
 ): T & { providerId: string | null };
 export function matchExistingSubscriptionProvider<T extends CatalogProvider>(
   subscriptionName: unknown,

@@ -129,6 +129,10 @@ npm.cmd run providers:match -- --apply --report=provider-match-report.json
 
 The matching task never deletes or renames subscription data.
 
+Receipt detection for Gmail, Outlook, pasted text, and normalized AI candidates uses the same catalog matcher. Strong matches require an exact known domain, exact canonical name with recurring evidence, a strong alias with recurring evidence, or a known sender name with amount and interval. Payment intermediaries and broad retailer domains are not accepted by domain alone. Candidates remain review-only until the user confirms them.
+
+Likely duplicates are warnings rather than automatic rejections. Matching considers `providerId`, billing interval, custom names, and active status so multiple legitimate subscriptions from one provider can still be confirmed.
+
 Aboslutt har manuell abonnementshåndtering som kjernefunksjon. Brukeren kan legge til og redigere aktive abonnementer uten å koble til Gmail.
 
 Abonnementer har nå navn, månedlig kostnad, kategori, status, faktureringsintervall, neste trekk, notat, kilde og eventuell import-confidence. Faktureringsintervall lagres som `monthly`, `yearly` eller `unknown`, og vises i UI som `Månedlig`, `Årlig` eller `Ukjent`.
@@ -158,21 +162,15 @@ Permanent sletting er bare tillatt for `cancelled` eller `archived`, og krever a
 
 Eldre eller inkonsistente data håndteres deterministisk: et abonnement med `confirmed_cancelled` oppsigelsesstatus behandles som `cancelled` selv om abonnementsstatusen fortsatt er `active`.
 
-### Leverandørkatalog
+### Leverandørguider
 
-Oppsigelsesflyten bruker en statisk leverandørkatalog i `src/data/cancellation-providers.ts`. Den beskriver kjente eller antatte oppsigelsesmetoder som:
+Oppsigelsesflyten bruker den delte `SubscriptionProvider`-katalogen. En aktiv guide kan ha anbefalt metode, nummererte instruksjoner, opplysninger brukeren kan trenge, forventet bekreftelse, offisiell lenke og dato for siste verifisering. Interne verifikasjonskilder vises bare for administratorer.
 
-- `account_page`
-- `app_store`
-- `contact_form`
-- `chat`
-- `partner_billing`
-- `manual_unknown`
-- `email`
+Katalogen skal være konservativ. Ikke aktiver en guide uten en kontrollert kilde, og ikke legg inn påstander om bindingstid eller oppsigelsesfrister som ikke er dokumentert. Utrygge lenkeprotokoller avvises. Hvis en leverandør mangler aktiv guide, bruker kunden den generelle manuelle oppsigelsesflyten.
 
-Katalogen skal være konservativ. Ikke legg inn oppsigelsesepost for en leverandør uten bekreftet kilde. Mange tjenester, som strømmetjenester og app-butikkabonnementer, krever at brukeren avslutter via kontoside, App Store, Google Play eller partnerfakturering. I slike tilfeller viser Aboslutt anbefalt metode og lar brukeren kopiere utkastet, men e-postsending er ikke primærvalget.
+Å åpne en leverandørlenke markerer aldri abonnementet som avsluttet. Brukeren bekrefter først at forespørselen er sendt, og bekrefter senere separat at leverandøren faktisk har avsluttet abonnementet. Først da flyttes abonnementet til historikken.
 
-Admin kan se katalogen på `/admin/providers`. Full CRUD for leverandørkatalogen er ikke implementert ennå.
+Administratorer vedlikeholder guider og ser aggregert dekningsrapport på `/admin/providers`. Rapporten viser komplette og manglende guider, manglende logoer, guider som ikke er verifisert de siste seks månedene, og brukstelling per leverandør uten brukeridentifiserende data.
 
 ## Auth
 

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
 import { PremiumUpgradeDialog } from "@/components/billing/PremiumUpgradeDialog";
+import { ProviderCombobox, type ProviderOption } from "@/components/subscriptions/ProviderCombobox";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
 import { LoadingButton } from "@/components/ui/LoadingButton";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/outlook-provider-state.mjs";
 import { formatNextPaymentDate, normalizeDateInputValue } from "@/lib/subscription-date";
 import type { BillingInterval, SubscriptionCategory } from "@/types/subscription";
+import { getProviderInitials } from "@/lib/subscription-provider-catalog.mjs";
 
 type MicrosoftImportState =
   | "loading"
@@ -47,6 +49,7 @@ type OutlookDisplayState =
   | "error";
 
 type CandidateDraft = {
+  providerId: string | null;
   merchantName: string;
   amount: string;
   category: SubscriptionCategory;
@@ -79,9 +82,18 @@ type OutlookCandidate = {
   reasons: string[];
   grouped: boolean;
   relatedMessageCount: number;
+  providerId: string | null;
+  canonicalProviderName: string | null;
+  originalDetectedName: string | null;
+  providerLogoPath: string | null;
+  suggestedCategory: string | null;
+  providerMatchConfidence: "high" | "medium" | null;
+  likelyDuplicate: boolean;
+  duplicateMessage: string | null;
 };
 
 type OutlookCandidateDraft = {
+  providerId: string | null;
   name: string;
   price: string;
   currency: string;
@@ -450,13 +462,14 @@ export default function EmailImportPage() {
 
       setMicrosoftConnected(false);
       setMicrosoftImportState("disconnected");
+      setMicrosoftEmail(null);
       setMicrosoftScanId(null);
-      setMicrosoftMessage("Microsoft er koblet fra. Outlook-tilgangen er fjernet.");
+      setMicrosoftMessage("Outlook er ikke koblet til.");
       setMicrosoftCandidates([]);
       trackFunnelEvent("email_provider_disconnected", { provider: "outlook", result: "success" });
       showToast({
-        title: "Microsoft er koblet fra",
-        message: "Du kan koble til igjen når du vil.",
+        title: "Outlook er koblet fra.",
+        message: "Du kan koble til Outlook igjen når du vil.",
         tone: "success",
       });
     } catch {
@@ -472,9 +485,10 @@ export default function EmailImportPage() {
   function startCandidateConfirmation(candidate: EmailSubscriptionCandidate) {
     setEditingCandidate(candidate);
     setCandidateDraft({
+      providerId: candidate.providerId ?? null,
       merchantName: candidate.merchantName,
       amount: String(candidate.amount),
-      category: candidate.category,
+      category: candidate.suggestedCategory ?? candidate.category,
       billingInterval: candidate.billingInterval === "yearly" ? "yearly" : "monthly",
       nextPayment: normalizeDateInputValue(candidate.nextPayment),
     });
@@ -511,6 +525,8 @@ export default function EmailImportPage() {
                 ? "yearly"
                 : "active",
           source: getCandidateSource(editingCandidate),
+          providerId: candidateDraft.providerId,
+          confirmedDuplicateReview: true,
         }),
       });
       const result = (await response.json()) as {
@@ -1240,6 +1256,7 @@ function MicrosoftImportPanel({
                       />
                       Velg
                     </label>
+                    <CandidateProviderLogo logoPath={candidate.providerLogoPath} name={candidate.providerName} />
                     <h3 className="font-extrabold text-[#0D1B2A]">{candidate.providerName}</h3>
                     <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#4A5568] ring-1 ring-[#DBE4EE]">
                       {getOutlookConfidenceLabel(candidate.confidence)}
@@ -1250,7 +1267,9 @@ function MicrosoftImportPanel({
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-sm text-[#5F6F82]">{candidate.subject}</p>
+                  {candidate.originalDetectedName && candidate.originalDetectedName !== candidate.providerName ? (
+                    <p className="mt-2 text-sm text-[#5F6F82]">Opprinnelig funn: {candidate.originalDetectedName}</p>
+                  ) : null}
                   <p className="mt-1 text-xs font-semibold text-[#5F6F82]">
                     {candidate.senderDomain ?? "Ukjent avsender"}
                     {candidate.receivedDate ? ` · ${new Date(candidate.receivedDate).toLocaleDateString("nb-NO")}` : ""}
@@ -1260,6 +1279,11 @@ function MicrosoftImportPanel({
                       <li key={reason}>- {reason}</li>
                     ))}
                   </ul>
+                  {candidate.duplicateMessage ? (
+                    <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-semibold ${candidate.likelyDuplicate ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>
+                      {candidate.duplicateMessage}
+                    </p>
+                  ) : null}
                   {itemResults[candidate.id] ? (
                     <p className="mt-3 text-sm font-bold text-[#0D1B2A]">{itemResults[candidate.id]}</p>
                   ) : null}
@@ -1275,7 +1299,12 @@ function MicrosoftImportPanel({
               </div>
               {isEditing ? (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <OutlookDraftInput label="Navn" value={draft.name} onChange={(name) => updateDraft(candidate.id, { name })} />
+                  <ProviderCombobox
+                    onChange={(name) => updateDraft(candidate.id, { name, providerId: null })}
+                    onSelect={(provider) => updateOutlookProviderDraft(candidate.id, provider, updateDraft)}
+                    selectedProviderId={draft.providerId}
+                    value={draft.name}
+                  />
                   <OutlookDraftInput
                     inputMode="numeric"
                     label="Pris"
@@ -1435,13 +1464,31 @@ function getOutlookIntervalLabel(interval: OutlookCandidate["billingInterval"]) 
 
 function toOutlookDraft(candidate: OutlookCandidate): OutlookCandidateDraft {
   return {
+    providerId: candidate.providerId,
     name: candidate.providerName,
     price: candidate.amount ? String(Math.round(candidate.amount)) : "",
     currency: candidate.currency ?? "NOK",
     billingInterval: candidate.billingInterval,
     nextPayment: "",
-    category: inferOutlookCategory(candidate.providerName),
+    category: candidate.suggestedCategory ?? inferOutlookCategory(candidate.providerName),
   };
+}
+
+function updateOutlookProviderDraft(
+  id: string,
+  provider: ProviderOption | null,
+  updateDraft: (id: string, update: Partial<OutlookCandidateDraft>) => void,
+) {
+  if (!provider) {
+    updateDraft(id, { providerId: null });
+    return;
+  }
+  updateDraft(id, {
+    providerId: provider.id,
+    name: provider.name,
+    category: provider.suggestedCategory,
+    ...(provider.defaultBillingInterval ? { billingInterval: provider.defaultBillingInterval } : {}),
+  });
 }
 
 function validateOutlookDraft(draft: OutlookCandidateDraft | undefined) {
@@ -1588,6 +1635,7 @@ function CandidateGroup({
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <CandidateProviderLogo logoPath={candidate.providerLogoPath ?? null} name={candidate.merchantName} />
                   <h3 className="text-xl font-extrabold tracking-tight">
                     {candidate.merchantName}
                   </h3>
@@ -1595,6 +1643,9 @@ function CandidateGroup({
                     {getConfidenceLabel(candidate)} · {getConfidenceScore(candidate)}%
                   </span>
                 </div>
+                {candidate.originalDetectedName && candidate.originalDetectedName !== candidate.merchantName ? (
+                  <p className="mt-2 text-sm text-[#5F6F82]">Opprinnelig funn: {candidate.originalDetectedName}</p>
+                ) : null}
                 <p className="mt-2 text-sm text-[#5F6F82]">
                   {candidate.amount} {candidate.currency} · {categoryLabels[candidate.category]} ·{" "}
                   {intervalLabels[candidate.billingInterval]}
@@ -1605,6 +1656,11 @@ function CandidateGroup({
                 <ReasonList items={candidate.reasons} title="Hvorfor fant vi dette?" />
                 {candidate.warnings.length > 0 ? (
                   <ReasonList items={candidate.warnings} title="Varsler" warning />
+                ) : null}
+                {candidate.duplicateMessage ? (
+                  <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-semibold ${candidate.likelyDuplicate ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>
+                    {candidate.duplicateMessage}
+                  </p>
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-col gap-2 sm:w-44">
@@ -1690,15 +1746,23 @@ function CandidateConfirmationModal({
         ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm font-semibold text-[#4A5568]">
-            Navn
-            <input
-              className="mt-2 w-full rounded-xl border border-[#DBE4EE] px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#0D1B2A]"
-              onChange={(event) => updateDraft({ merchantName: event.target.value })}
-              required
-              value={draft.merchantName}
-            />
-          </label>
+          <ProviderCombobox
+            onChange={(merchantName) => updateDraft({ merchantName, providerId: null })}
+            onSelect={(provider) =>
+              updateDraft(
+                provider
+                  ? {
+                      providerId: provider.id,
+                      merchantName: provider.name,
+                      category: provider.suggestedCategory,
+                      billingInterval: provider.defaultBillingInterval ?? draft.billingInterval,
+                    }
+                  : { providerId: null },
+              )
+            }
+            selectedProviderId={draft.providerId}
+            value={draft.merchantName}
+          />
           <label className="text-sm font-semibold text-[#4A5568]">
             Kr/mnd
             <input
@@ -1776,6 +1840,22 @@ function CandidateConfirmationModal({
         </div>
       </form>
     </div>
+  );
+}
+
+function CandidateProviderLogo({ name, logoPath }: { name: string; logoPath: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (logoPath && !failed) {
+    return (
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-[#DBE4EE]">
+        <Image alt="" data-testid="candidate-provider-logo" height={24} onError={() => setFailed(true)} src={logoPath} width={24} />
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0D1B2A] text-xs font-black text-white" data-testid="candidate-provider-fallback">
+      {getProviderInitials(name)}
+    </span>
   );
 }
 

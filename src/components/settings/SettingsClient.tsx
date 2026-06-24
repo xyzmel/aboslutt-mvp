@@ -94,6 +94,9 @@ export function SettingsClient({
   const [message, setMessage] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [isDisconnectingOutlook, setIsDisconnectingOutlook] = useState(false);
+  const [outlookConnected, setOutlookConnected] = useState(microsoftConnected);
+  const [outlookReconnectRequired, setOutlookReconnectRequired] = useState(microsoftReconnectRequired);
+  const [outlookEmail, setOutlookEmail] = useState(microsoftEmail);
   const [billingStatus, setBillingStatus] = useState(billingAgreement?.status ?? null);
   const [normalizedBillingState, setNormalizedBillingState] = useState(billingState);
   const [isCancellingBilling, setIsCancellingBilling] = useState(false);
@@ -172,13 +175,15 @@ export function SettingsClient({
       if (!response.ok) {
         throw new Error("Kunne ikke koble fra Outlook.");
       }
+      setOutlookConnected(false);
+      setOutlookReconnectRequired(false);
+      setOutlookEmail(null);
       setMessage("Outlook er koblet fra.");
       showToast({
         title: "Outlook koblet fra",
         message: "Tilkoblingen er fjernet.",
         tone: "success",
       });
-      window.location.reload();
     } catch {
       const userMessage = "Kunne ikke koble fra Outlook akkurat nå.";
       setMessage(userMessage);
@@ -374,25 +379,25 @@ export function SettingsClient({
             />
             )}
 
-            {microsoftConfigured || microsoftConnected || microsoftReconnectRequired ? (
+            {microsoftConfigured || outlookConnected || outlookReconnectRequired ? (
               <ConnectionRow
-                description="Finn mulige abonnementer fra Outlook-kvitteringer når du selv starter en skanning."
-                detail={microsoftConnected ? microsoftEmail : null}
+                description={outlookConnected ? "Outlook er koblet til og klar for skanning." : outlookReconnectRequired ? "Tilkoblingen til Outlook har utløpt." : "Outlook er ikke koblet til."}
+                detail={outlookConnected ? outlookEmail : null}
                 logoAlt="Outlook"
                 logoSrc="/outlook.png"
                 primaryAction={
-                  microsoftConnected ? (
+                  outlookConnected ? (
                     <a className={primaryLinkClass} href="/import/email">
                       Administrer
                     </a>
                   ) : (
                     <a className={primaryLinkClass} href="/api/import/microsoft/connect">
-                      {microsoftReconnectRequired ? "Koble til på nytt" : "Koble til Outlook"}
+                      {outlookReconnectRequired ? "Koble til på nytt" : "Koble til Outlook"}
                     </a>
                   )
                 }
                 secondaryAction={
-                  microsoftConnected ? (
+                  outlookConnected ? (
                     <button
                       className={secondaryButtonClass}
                       disabled={isDisconnectingOutlook}
@@ -403,8 +408,8 @@ export function SettingsClient({
                     </button>
                   ) : null
                 }
-                status={microsoftConnected ? "Tilkoblet" : microsoftReconnectRequired ? "Må kobles til på nytt" : "Ikke tilkoblet"}
-                statusTone={microsoftConnected ? "success" : microsoftReconnectRequired ? "warning" : "neutral"}
+                status={outlookConnected ? "Tilkoblet" : outlookReconnectRequired ? "Må kobles til på nytt" : "Ikke tilkoblet"}
+                statusTone={outlookConnected ? "success" : outlookReconnectRequired ? "warning" : "neutral"}
                 title="Outlook"
               />
             ) : null}
@@ -688,7 +693,7 @@ function BillingSection({
       description="Se plan, pris og status for Premium-betalingen din."
       title="Abonnement og betaling"
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" data-testid="current-plan-summary">
         <dl className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <BillingDetail label="Plan" value={planLabel} />
           <BillingDetail label="Intervall" value={formatNormalizedBillingInterval(billingState.billingInterval)} />

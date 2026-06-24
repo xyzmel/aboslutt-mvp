@@ -3,6 +3,17 @@ import type { SubscriptionCategory } from "@/types/subscription";
 export type BillingInterval = "monthly" | "yearly" | "trial" | "unknown";
 
 export type EmailSubscriptionCandidate = {
+  providerId?: string | null;
+  canonicalProviderName?: string | null;
+  originalDetectedName?: string | null;
+  providerMatchType?: string | null;
+  providerMatchConfidence?: "high" | "medium" | null;
+  providerMatchedValue?: string | null;
+  providerLogoPath?: string | null;
+  suggestedCategory?: SubscriptionCategory | null;
+  likelyDuplicate?: boolean;
+  duplicateCount?: number;
+  duplicateMessage?: string | null;
   merchantName: string;
   amount: number;
   currency: string;
@@ -101,7 +112,10 @@ const negativeSignals = [
   { pattern: /\b(one-time purchase|engangskjøp|engangskjop|in-app purchase)\b/i, points: 0.4, warning: "Engangskjøp nevnt" },
 ];
 
-export function parseEmailSubscriptionCandidates(text: unknown): EmailSubscriptionCandidate[] {
+export function parseEmailSubscriptionCandidates(
+  text: unknown,
+  providerHint?: { name: string; category: SubscriptionCategory } | null,
+): EmailSubscriptionCandidate[] {
   try {
     if (typeof text !== "string") {
       return [];
@@ -113,7 +127,7 @@ export function parseEmailSubscriptionCandidates(text: unknown): EmailSubscripti
       return [];
     }
 
-    const merchant = findMerchant(normalizedText);
+    const merchant = findMerchant(normalizedText, providerHint);
     const billingInterval = findBillingInterval(normalizedText);
     const amount = findBestAmount(normalizedText, billingInterval);
 
@@ -215,7 +229,18 @@ export function normalizeMerchantName(name: string) {
   return merchant?.merchantName ?? titleCase(name.trim());
 }
 
-function findMerchant(text: string): MerchantMatch | null {
+function findMerchant(
+  text: string,
+  providerHint?: { name: string; category: SubscriptionCategory } | null,
+): MerchantMatch | null {
+  if (providerHint) {
+    return {
+      merchantName: providerHint.name,
+      category: providerHint.category,
+      reasons: [`Leverandør matchet mot katalogen: ${providerHint.name}`],
+      warnings: [],
+    };
+  }
   const googleProduct = findGoogleProduct(text);
 
   if (googleProduct) {

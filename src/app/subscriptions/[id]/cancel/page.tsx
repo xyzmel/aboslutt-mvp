@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import { CancellationEmailClient } from "@/components/cancellation/CancellationEmailClient";
 import { AppFooter } from "@/components/navigation/AppFooter";
 import { AppHeader } from "@/components/navigation/AppHeader";
-import { findCancellationProvider } from "@/data/cancellation-providers";
 import { canSendCancellationEmail } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { getCurrentAppUser } from "@/lib/current-user";
+import { toPublicCancellationGuide } from "@/lib/provider-cancellation-guide.mjs";
 import type { BillingInterval, Subscription, SubscriptionCategory, SubscriptionStatus } from "@/types/subscription";
 
 type CancelPageProps = {
@@ -36,6 +36,22 @@ export default async function CancelSubscriptionPage({ params }: CancelPageProps
       source: true,
       confidence: true,
       createdAt: true,
+      provider: {
+        select: {
+          id: true,
+          name: true,
+          logoPath: true,
+          accountManagementUrl: true,
+          cancellationUrl: true,
+          cancellationMethod: true,
+          cancellationInstructions: true,
+          requiredInformation: true,
+          confirmationExpected: true,
+          isCancellationGuideActive: true,
+          isActive: true,
+          lastVerifiedAt: true,
+        },
+      },
     },
   });
 
@@ -78,7 +94,7 @@ export default async function CancelSubscriptionPage({ params }: CancelPageProps
         currentUserEmail={currentUser.email}
         currentUserName={currentUser.name}
         initialRequest={latestRequest}
-        provider={findCancellationProvider(subscription.name, subscription.normalizedName)}
+        guide={subscription.provider ? toPublicCancellationGuide(subscription.provider) : null}
         subscription={toSubscriptionView(subscription)}
       />
       <AppFooter compact />
@@ -99,12 +115,20 @@ function toSubscriptionView(subscription: {
   source: string | null;
   confidence: number | null;
   createdAt: Date;
+  provider?: unknown;
 }): Subscription {
   return {
-    ...subscription,
+    id: subscription.id,
+    name: subscription.name,
+    normalizedName: subscription.normalizedName,
     category: subscription.category as SubscriptionCategory,
+    monthlyCost: subscription.monthlyCost,
     status: subscription.status as SubscriptionStatus,
     billingInterval: subscription.billingInterval as BillingInterval,
+    nextPayment: subscription.nextPayment,
+    note: subscription.note,
+    source: subscription.source,
+    confidence: subscription.confidence,
     createdAt: subscription.createdAt.toISOString(),
   };
 }

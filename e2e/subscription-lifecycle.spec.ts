@@ -16,12 +16,12 @@ test.describe("subscription lifecycle", () => {
     await manualForm.getByLabel("Kr/mnd").fill("149");
     await manualForm.getByLabel("Kategori").selectOption("streaming");
     await manualForm.getByLabel("Intervall").selectOption("monthly");
-    await manualForm.getByRole("button", { name: "Legg til", exact: true }).click();
+    await manualForm.getByRole("button", { name: "Legg til abonnement" }).click();
 
     const card = page.locator("article").filter({ hasText: name });
     await expect(card).toBeVisible();
     await card.getByRole("button", { name: "Rediger" }).click();
-    const editDialog = page.getByRole("heading", { name: "Rediger abonnement" }).locator("..").locator("..");
+    const editDialog = page.getByRole("dialog", { name: "Rediger abonnement" });
     await editDialog.getByLabel("Leverandør").fill(editedName);
     await editDialog.getByRole("option", { name: `Legg til «${editedName}»` }).click();
     await editDialog.getByLabel("Kr/mnd").fill("169");
@@ -56,8 +56,8 @@ test.describe("subscription lifecycle", () => {
 
     await page.goto("/dashboard");
     await expect(page.locator("#subscriptions").getByText(editedName)).toHaveCount(0);
-    const history = page.getByRole("heading", { name: "Fullførte oppsigelser" }).locator("..").locator("..");
-    await expect(history).toContainText(editedName);
+    const history = page.getByTestId("cancellation-history");
+    await expect(history).toContainText(new RegExp(escapeRegExp(editedName), "i"));
 
     await page.goto(`/subscriptions/${subscriptionId}`);
     await expect(page.getByRole("button", { name: "Slett" })).toBeVisible();
@@ -71,3 +71,7 @@ test.describe("subscription lifecycle", () => {
     expect(await getSubscription(subscriptionId!)).toBeNull();
   });
 });
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

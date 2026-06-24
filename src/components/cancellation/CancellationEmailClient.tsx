@@ -1,15 +1,16 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { PremiumFeatureGate } from "@/components/billing/PremiumFeatureGate";
-import {
-  type CancellationProvider,
-  type CancellationProviderMethod,
-  getCancellationMethodLabel,
-} from "@/data/cancellation-providers";
+import type { CancellationProviderMethod } from "@/data/cancellation-providers";
 import { useToast } from "@/components/ui/ToastProvider";
 import { getCancellationEventLabel, getCancellationStatusLabel } from "@/lib/cancellation";
+import {
+  getCancellationGuideMethodLabel,
+} from "@/lib/provider-cancellation-guide.mjs";
+import { getProviderInitials } from "@/lib/subscription-provider-catalog.mjs";
 import type { Subscription } from "@/types/subscription";
 
 type CancellationRequestView = {
@@ -45,8 +46,22 @@ type CancellationEmailClientProps = {
   currentUserEmail: string | null;
   canSend: boolean;
   initialRequest: CancellationRequestView | null;
-  provider: CancellationProvider | null;
+  guide: ProviderCancellationGuide | null;
 };
+
+type ProviderCancellationGuide = {
+  providerId: string;
+  providerName: string;
+  logoPath: string | null;
+  method: CancellationGuideMethod;
+  instructions: string[];
+  requiredInformation: string[];
+  confirmationExpected: string | null;
+  officialUrl: string | null;
+  lastVerifiedAt: Date | string | null;
+};
+
+type CancellationGuideMethod = "website" | "email" | "phone" | "app" | "manual" | "unknown";
 
 type DraftForm = {
   customerName: string;
@@ -65,10 +80,10 @@ export function CancellationEmailClient({
   currentUserEmail,
   canSend,
   initialRequest,
-  provider,
+  guide,
 }: CancellationEmailClientProps) {
   const { showToast } = useToast();
-  const initialMethod = getInitialMethod(initialRequest?.method, provider);
+  const initialMethod = getInitialMethod(initialRequest?.method, guide);
   const generatedDraft = useMemo(
     () => createLocalDraft(subscription.name, currentUserName ?? "", currentUserEmail ?? "", "", ""),
     [currentUserEmail, currentUserName, subscription.name],
@@ -79,7 +94,7 @@ export function CancellationEmailClient({
     customerEmail: initialRequest?.customerEmail ?? currentUserEmail ?? "",
     customerNumber: initialRequest?.customerNumber ?? "",
     extraNote: "",
-    recipientEmail: initialRequest?.recipientEmail ?? provider?.cancellationEmail ?? "",
+    recipientEmail: initialRequest?.recipientEmail ?? "",
     method: initialMethod,
     subject: initialRequest?.subject ?? generatedDraft.subject,
     body: initialRequest?.body ?? generatedDraft.body,
@@ -88,7 +103,6 @@ export function CancellationEmailClient({
   const [message, setMessage] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
-  const statusLabel = getCancellationStatusLabel(request?.status);
   const canSendEmailMethod = form.method === "email" && Boolean(form.recipientEmail);
   const showManualPrimary = form.method !== "email";
 
@@ -227,6 +241,28 @@ export function CancellationEmailClient({
     }
   }
 
+  async function markRequestSent() {
+    if (!request || isWorking) return;
+    setIsWorking(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/subscriptions/${subscription.id}/cancellation`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_sent", requestId: request.id }),
+      });
+      const result = (await response.json()) as { request?: CancellationRequestView };
+      if (!response.ok || !result.request) throw new Error();
+      setRequest(result.request);
+      setMessage("Oppsigelsen er registrert som sendt. Nå venter du på bekreftelse fra leverandøren.");
+      showToast({ title: "Oppsigelse sendt", message: "Venter på bekreftelse fra leverandøren.", tone: "success" });
+    } catch {
+      setMessage("Kunne ikke oppdatere oppsigelsen akkurat nå.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function addNote() {
     if (!request || !note.trim()) {
       setMessage("Skriv et notat først.");
@@ -279,11 +315,11 @@ export function CancellationEmailClient({
           <h1 className="mt-2 text-2xl font-extrabold tracking-tight">{subscription.name}</h1>
           <dl className="mt-5 grid gap-3 text-sm">
             <InfoRow label="Potensiell sparing" value={`${subscription.monthlyCost} kr/mnd`} />
-            <InfoRow label="Status" value={statusLabel ?? "Ikke sendt"} />
-            <InfoRow label="Anbefalt metode" value={provider ? getCancellationMethodLabel(provider.method) : "Ukjent"} />
+            <InfoRow label="Status" value={getPublicCancellationState(request?.status)} />
+            <InfoRow label="Anbefalt metode" value={guide ? getCancellationGuideMethodLabel(guide.method) : "Manuell kontakt"} />
           </dl>
 
-          <ProviderGuidance provider={provider} />
+          <ProviderGuidance guide={guide} />
 
           <div className="mt-5 rounded-xl bg-[#FFF6E8] p-4 text-sm font-semibold leading-6 text-[#8A4B13]">
             Ikke alle leverandører godtar oppsigelse på e-post. Bruk anbefalt metode når Aboslutt kjenner den.
@@ -338,7 +374,7 @@ export function CancellationEmailClient({
                 value={form.recipientEmail}
               />
             ) : (
-              <ManualMethodBox provider={provider} method={form.method} />
+              <ManualMethodBox guide={guide} method={form.method} />
             )}
 
             <details className="rounded-xl bg-[#F7F9FC] p-4">
@@ -379,11 +415,11 @@ export function CancellationEmailClient({
               <button className="rounded-xl border border-[#DBE4EE] px-5 py-3 text-sm font-bold hover:border-[#C8102E]/50" onClick={copyDraft} type="button">
                 Kopier utkast
               </button>
-              {provider?.cancellationUrl ? (
+              {guide?.officialUrl ? (
                 <Link
                   className="rounded-xl bg-[#0D1B2A] px-5 py-3 text-center text-sm font-bold text-white hover:bg-[#13263a]"
-                  href={provider.cancellationUrl}
-                  rel="noreferrer"
+                  href={guide.officialUrl}
+                  rel="noopener noreferrer"
                   target="_blank"
                 >
                   Åpne oppsigelsesside
@@ -395,6 +431,23 @@ export function CancellationEmailClient({
           {showManualPrimary ? (
             <div className="mt-6 rounded-2xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
               Denne leverandøren ser ut til å kreve at du bruker kontoside, app, chat eller kundeservice. Lagre gjerne utkastet som hjelp, men bruk leverandørens anbefalte metode først.
+            </div>
+          ) : null}
+
+          {request && form.method !== "email" && !["awaiting_confirmation", "confirmed_cancelled"].includes(request.status) ? (
+            <div className="mt-6 rounded-2xl border border-[#DBE4EE] bg-white p-4">
+              <h2 className="text-sm font-extrabold">Har du sendt oppsigelsen?</h2>
+              <p className="mt-2 text-sm leading-6 text-[#5F6F82]">
+                Bekreft først etter at du har fullført trinnene hos leverandøren. Dette markerer bare forespørselen som sendt.
+              </p>
+              <button
+                className="mt-4 rounded-xl bg-[#0D1B2A] px-5 py-3 text-sm font-bold text-white hover:bg-[#13263a] disabled:opacity-50"
+                disabled={isWorking}
+                onClick={markRequestSent}
+                type="button"
+              >
+                Jeg har sendt oppsigelsen
+              </button>
             </div>
           ) : null}
 
@@ -502,47 +555,80 @@ function CancellationTimeline({
   );
 }
 
-function ProviderGuidance({ provider }: { provider: CancellationProvider | null }) {
-  if (!provider) {
+function ProviderGuidance({ guide }: { guide: ProviderCancellationGuide | null }) {
+  if (!guide) {
     return (
       <div className="mt-5 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-        Vi fant ikke en trygg oppsigelsesmetode for denne leverandøren ennå. Kontroller mottaker eller bruk leverandørens egne sider.
+        <p className="font-bold text-[#0D1B2A]">Generell oppsigelsesveiledning</p>
+        <p className="mt-1">
+          Vi har ikke en verifisert leverandørguide. Finn den offisielle kontosiden eller kontakt kundeservice, og be om skriftlig bekreftelse.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="mt-5 rounded-xl bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-      <p className="font-bold text-[#0D1B2A]">{provider.displayName}</p>
-      <p className="mt-1">{provider.notes}</p>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-        <span className="rounded-full bg-white px-3 py-1 text-[#5F6F82]">
-          {getCancellationMethodLabel(provider.method)}
-        </span>
-        {provider.requiresLogin ? <span className="rounded-full bg-white px-3 py-1 text-[#5F6F82]">Krever innlogging</span> : null}
-        {provider.requiresCustomerNumber ? <span className="rounded-full bg-white px-3 py-1 text-[#5F6F82]">Kundenummer kan være nyttig</span> : null}
-        {provider.confidence === "needs_review" ? <span className="rounded-full bg-[#FFF6E8] px-3 py-1 text-[#8A4B13]">Må kvalitetssikres</span> : null}
+      <div className="flex items-center gap-3">
+        {guide.logoPath ? (
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white ring-1 ring-[#DBE4EE]">
+            <Image alt="" height={26} src={guide.logoPath} width={26} />
+          </span>
+        ) : (
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0D1B2A] text-xs font-black text-white">
+            {getProviderInitials(guide.providerName)}
+          </span>
+        )}
+        <div>
+          <p className="font-bold text-[#0D1B2A]">{guide.providerName}</p>
+          <p className="text-xs font-semibold text-[#5F6F82]">{getCancellationGuideMethodLabel(guide.method)}</p>
+        </div>
+      </div>
+      <ol className="mt-4 grid gap-3">
+        {guide.instructions.map((instruction, index) => (
+          <li className="flex gap-3" key={`${index}-${instruction}`}>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0D1B2A] text-xs font-bold text-white">
+              {index + 1}
+            </span>
+            <span>{instruction}</span>
+          </li>
+        ))}
+      </ol>
+      {guide.requiredInformation.length > 0 ? (
+        <div className="mt-4">
+          <p className="font-bold text-[#0D1B2A]">Dette kan du trenge</p>
+          <ul className="mt-1 list-disc pl-5">
+            {guide.requiredInformation.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {guide.confirmationExpected ? <p className="mt-4">{guide.confirmationExpected}</p> : null}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#DBE4EE] pt-3 text-xs font-semibold">
+        <span>{formatVerifiedDate(guide.lastVerifiedAt)}</span>
+        <Link href={`mailto:kontakt@aboslutt.no?subject=${encodeURIComponent(`Feil i oppsigelsesguide for ${guide.providerName}`)}`} className="text-[#C8102E] hover:underline">
+          Rapporter feil informasjon
+        </Link>
       </div>
     </div>
   );
 }
 
 function ManualMethodBox({
-  provider,
+  guide,
   method,
 }: {
-  provider: CancellationProvider | null;
+  guide: ProviderCancellationGuide | null;
   method: CancellationProviderMethod;
 }) {
   return (
     <div className="rounded-xl border border-[#DBE4EE] bg-[#F7F9FC] p-4 text-sm leading-6 text-[#4A5568]">
-      <p className="font-bold text-[#0D1B2A]">{getCancellationMethodLabel(method)}</p>
+      <p className="font-bold text-[#0D1B2A]">{getDraftMethodLabel(method)}</p>
       <p className="mt-1">
         E-post er ikke valgt som primær metode. Bruk leverandørens kontoside, app, kontaktskjema eller kundeservice, og kopier utkastet hvis du trenger tekst.
       </p>
-      {provider?.supportUrl ? (
-        <Link className="mt-3 inline-flex font-bold text-[#C8102E] hover:underline" href={provider.supportUrl} rel="noreferrer" target="_blank">
-          Åpne kundeservice
+      {guide?.officialUrl ? (
+        <Link className="mt-3 inline-flex font-bold text-[#C8102E] hover:underline" href={guide.officialUrl} rel="noopener noreferrer" target="_blank">
+          Åpne offisiell side
         </Link>
       ) : null}
     </div>
@@ -630,7 +716,7 @@ Denne oppsigelsen er sendt via Aboslutt på vegne av kunden.`;
   return { subject, body };
 }
 
-function getInitialMethod(value: string | null | undefined, provider: CancellationProvider | null): CancellationProviderMethod {
+function getInitialMethod(value: string | null | undefined, guide: ProviderCancellationGuide | null): CancellationProviderMethod {
   const allowedMethods: CancellationProviderMethod[] = [
     "email",
     "account_page",
@@ -645,7 +731,42 @@ function getInitialMethod(value: string | null | undefined, provider: Cancellati
     return value as CancellationProviderMethod;
   }
 
-  return provider?.method ?? "email";
+  const guideMethods: Record<CancellationGuideMethod, CancellationProviderMethod> = {
+    website: "account_page",
+    email: "email",
+    phone: "manual_unknown",
+    app: "app_store",
+    manual: "manual_unknown",
+    unknown: "manual_unknown",
+  };
+
+  return guide ? guideMethods[guide.method] : "manual_unknown";
+}
+
+function getPublicCancellationState(status?: string | null) {
+  if (!status) return "Oppsigelse ikke startet";
+  if (status === "confirmed_cancelled") return "Abonnement avsluttet";
+  if (["sent", "awaiting_confirmation"].includes(status)) return "Oppsigelse sendt – venter på bekreftelse";
+  return "Oppsigelse pågår";
+}
+
+function getDraftMethodLabel(method: CancellationProviderMethod) {
+  return {
+    email: "E-post",
+    account_page: "Nettside",
+    contact_form: "Kontaktskjema",
+    chat: "Chat",
+    app_store: "App",
+    partner_billing: "Partnerfakturering",
+    manual_unknown: "Manuell kontakt",
+  }[method];
+}
+
+function formatVerifiedDate(value: Date | string | null) {
+  if (!value) return "Ikke datoverifisert";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Ikke datoverifisert";
+  return `Sist verifisert ${date.toLocaleDateString("nb-NO")}`;
 }
 
 function getFallbackTimeline(status: string): CancellationEventView[] {

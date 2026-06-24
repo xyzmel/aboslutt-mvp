@@ -16,6 +16,13 @@ const allowedCurrencies = new Set(["NOK", "USD", "EUR", "GBP", "SEK", "DKK"]);
  * @property {string[]} reasons
  * @property {boolean} grouped
  * @property {number} relatedMessageCount
+ * @property {string | null} providerId
+ * @property {string | null} canonicalProviderName
+ * @property {string | null} originalDetectedName
+ * @property {string | null} providerLogoPath
+ * @property {string | null} suggestedCategory
+ * @property {boolean} likelyDuplicate
+ * @property {string | null} duplicateMessage
  */
 
 /**
@@ -28,6 +35,7 @@ const allowedCurrencies = new Set(["NOK", "USD", "EUR", "GBP", "SEK", "DKK"]);
  * @property {string | undefined} billingInterval
  * @property {string | undefined} nextPayment
  * @property {string | undefined} category
+ * @property {string | null | undefined} providerId
  */
 
 /**
@@ -81,6 +89,7 @@ export function validateOutlookCandidateForImport(stored, edited) {
       confidence: confidenceToNumber(stored.confidence),
       note: `Importert fra Outlook. ${stored.grouped ? `${stored.relatedMessageCount} relaterte meldinger.` : "Ett forslag."}`,
       source: "outlook_import",
+      providerId: typeof edited?.providerId === "string" ? edited.providerId : stored.providerId,
     },
   };
 }
@@ -190,6 +199,13 @@ function normalizeStoredCandidate(candidate) {
     reasons: Array.isArray(record.reasons) ? record.reasons.map((reason) => sanitizeText(reason, 120)).filter(Boolean) : [],
     grouped: Boolean(record.grouped),
     relatedMessageCount: typeof record.relatedMessageCount === "number" ? Math.max(1, record.relatedMessageCount) : 1,
+    providerId: typeof record.providerId === "string" ? sanitizeText(record.providerId, 80) : null,
+    canonicalProviderName: typeof record.canonicalProviderName === "string" ? sanitizeText(record.canonicalProviderName, 100) : null,
+    originalDetectedName: typeof record.originalDetectedName === "string" ? sanitizeText(record.originalDetectedName, 100) : null,
+    providerLogoPath: typeof record.providerLogoPath === "string" ? sanitizeText(record.providerLogoPath, 200) : null,
+    suggestedCategory: typeof record.suggestedCategory === "string" ? sanitizeText(record.suggestedCategory, 24) : null,
+    likelyDuplicate: Boolean(record.likelyDuplicate),
+    duplicateMessage: typeof record.duplicateMessage === "string" ? sanitizeText(record.duplicateMessage, 200) : null,
   };
 }
 

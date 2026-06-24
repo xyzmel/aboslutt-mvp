@@ -59,7 +59,8 @@ test.describe("free, premium, and provider connections", () => {
     await login(page, freeUser);
     await page.goto("/settings");
 
-    await expect(page.getByText("Gratisplan aktiv")).toBeVisible();
+    const currentPlan = page.getByTestId("current-plan-summary");
+    await expect(currentPlan.getByText("Gratisplan aktiv")).toHaveCount(1);
     await expect(page.getByText(/Premium utløp/)).toBeVisible();
     await expect(page.getByText("Premium aktiv")).toHaveCount(0);
   });
@@ -118,7 +119,9 @@ test.describe("free, premium, and provider connections", () => {
 
     const outlookCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "Outlook" }) });
     await outlookCard.getByRole("button", { name: "Koble fra" }).click();
-    await expect(outlookCard.getByText("Microsoft er koblet fra. Outlook-tilgangen er fjernet.")).toBeVisible();
-    await expect(outlookCard.getByText("Tilkoblet")).toHaveCount(0);
+    await expect(outlookCard.getByText("Tilkoblet", { exact: true })).toHaveCount(0);
+    await expect(outlookCard.getByText("Ikke tilkoblet", { exact: true })).toBeVisible();
+    await expect(outlookCard.getByText("Outlook er ikke koblet til.")).toBeVisible();
+    await expect(outlookCard.getByRole("link", { name: "Koble til Outlook" })).toBeVisible();
   });
 });

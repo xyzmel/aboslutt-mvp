@@ -303,6 +303,13 @@ model SubscriptionProvider {
   websiteUrl               String?
   accountManagementUrl     String?
   cancellationUrl          String?
+  cancellationMethod       String?
+  cancellationInstructions String[] @default([])
+  requiredInformation      String[] @default([])
+  confirmationExpected     String?
+  countryCode              String?
+  verificationSource       String?
+  isCancellationGuideActive Boolean @default(false)
   defaultBillingInterval   String?
   supportedCountries       String[] @default(["NO"])
   isActive                 Boolean  @default(true)
@@ -314,6 +321,20 @@ model SubscriptionProvider {
   @@index([name])
   @@index([category])
   @@index([isActive])
+  @@index([isCancellationGuideActive])
+}
+
+model UnmatchedProviderSignal {
+  id             String   @id @default(cuid())
+  normalizedName String   @unique
+  displayName    String
+  source         String
+  count          Int      @default(1)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @updatedAt
+
+  @@index([count])
+  @@index([lastSeenAt])
 }
 
 model CancellationRequest {

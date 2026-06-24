@@ -7,7 +7,8 @@ export async function login(page: Page, user: TestUser) {
   await page.getByLabel("Passord").fill(user.password);
   await page.getByRole("button", { name: "Fortsett med e-post" }).click();
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole("heading", { name: /Oversikt|Få kontroll/i })).toBeVisible();
+  await expect(page.getByTestId("dashboard-ready")).toBeVisible();
+  await expect(page.getByText("Kunne ikke hente abonnementene dine akkurat nå.")).toHaveCount(0);
 }
 
 export async function logout(page: Page) {

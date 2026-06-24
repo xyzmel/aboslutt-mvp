@@ -33,7 +33,7 @@ function createLifecycle(productStatus, cancellationStatus) {
   const labels = {
     active: "Aktiv",
     cancellation_in_progress: "Oppsigelse pågår",
-    cancelled: "Avsluttet",
+    cancelled: "Abonnement avsluttet",
     archived: "Arkivert",
   };
 

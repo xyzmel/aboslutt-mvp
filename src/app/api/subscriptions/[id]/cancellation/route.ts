@@ -5,7 +5,6 @@ import {
   logCancellationAudit,
   logCancellationEvent,
 } from "@/lib/cancellation";
-import { cancellationProviders } from "@/data/cancellation-providers";
 import { getCurrentUser, unauthorizedResponse } from "@/lib/current-user";
 import { canSendCancellationEmail } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
@@ -208,6 +207,39 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (action === "send") {
     return sendCancellationEmail({ currentUser, cancellationRequest });
+  }
+
+  if (action === "mark_sent") {
+    if (cancellationRequest.status === "confirmed_cancelled") {
+      return NextResponse.json(
+        { ok: false, error: "ALREADY_COMPLETED", message: "Oppsigelsen er allerede bekreftet avsluttet." },
+        { status: 409 },
+      );
+    }
+
+    const now = new Date();
+    await prisma.cancellationRequest.update({
+      where: { id: cancellationRequest.id },
+      data: {
+        status: "awaiting_confirmation",
+        sentAt: cancellationRequest.sentAt ?? now,
+        consentConfirmed: true,
+        providerResponse: "marked_sent_by_user",
+      },
+    });
+    await logCancellationAudit({
+      userId: currentUser.id,
+      subscriptionId: subscription.id,
+      cancellationRequestId: cancellationRequest.id,
+      action: "cancellation_marked_sent",
+    });
+    await logCancellationEvent({
+      cancellationRequestId: cancellationRequest.id,
+      type: "awaiting_confirmation",
+      message: "Brukeren bekreftet at oppsigelsen er sendt til leverandøren.",
+    });
+
+    return NextResponse.json({ ok: true, request: await getCancellationRequestById(cancellationRequest.id) });
   }
 
   if (action === "status") {
@@ -414,7 +446,9 @@ function getString(value: unknown) {
 }
 
 function getCancellationMethod(value: string) {
-  return cancellationProviders.some((provider) => provider.method === value) ? value : "email";
+  return ["email", "account_page", "contact_form", "chat", "app_store", "partner_billing", "manual_unknown"].includes(value)
+    ? value
+    : "manual_unknown";
 }
 
 function isEmail(value: string) {

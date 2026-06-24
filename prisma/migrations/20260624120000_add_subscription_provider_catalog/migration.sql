@@ -32,3 +32,19 @@ ALTER TABLE "Subscription"
 ADD CONSTRAINT "Subscription_providerId_fkey"
 FOREIGN KEY ("providerId") REFERENCES "SubscriptionProvider"("id")
 ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE "UnmatchedProviderSignal" (
+    "id" TEXT NOT NULL,
+    "normalizedName" TEXT NOT NULL,
+    "displayName" TEXT NOT NULL,
+    "source" TEXT NOT NULL,
+    "count" INTEGER NOT NULL DEFAULT 1,
+    "firstSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastSeenAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UnmatchedProviderSignal_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "UnmatchedProviderSignal_normalizedName_key" ON "UnmatchedProviderSignal"("normalizedName");
+CREATE INDEX "UnmatchedProviderSignal_count_idx" ON "UnmatchedProviderSignal"("count");
+CREATE INDEX "UnmatchedProviderSignal_lastSeenAt_idx" ON "UnmatchedProviderSignal"("lastSeenAt");

@@ -31,13 +31,13 @@ export function isCancellationStatus(value: string): value is CancellationStatus
 
 export function getCancellationStatusLabel(status?: string | null) {
   const labels: Record<CancellationStatus, string> = {
-    draft: "Utkast",
-    ready: "Klar",
-    sent: "Oppsigelse sendt",
-    awaiting_confirmation: "Venter på bekreftelse",
-    confirmed_cancelled: "Avsluttet",
-    rejected: "Avvist",
-    manual_required: "Krever manuell handling",
+    draft: "Oppsigelse pågår",
+    ready: "Oppsigelse pågår",
+    sent: "Oppsigelse sendt – venter på bekreftelse",
+    awaiting_confirmation: "Oppsigelse sendt – venter på bekreftelse",
+    confirmed_cancelled: "Abonnement avsluttet",
+    rejected: "Oppsigelse pågår",
+    manual_required: "Oppsigelse pågår",
   };
 
   return status && isCancellationStatus(status) ? labels[status] : null;

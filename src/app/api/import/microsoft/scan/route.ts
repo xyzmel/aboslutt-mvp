@@ -12,6 +12,11 @@ import { detectOutlookSubscriptionCandidates } from "@/lib/microsoft-outlook-det
 import { toPrismaJson } from "@/lib/prisma-json";
 import { prisma } from "@/lib/prisma";
 import { rateLimitResponseIfNeeded } from "@/lib/rate-limit";
+import {
+  enrichDetectedCandidates,
+  loadActiveProviderCatalog,
+  matchProviderContext,
+} from "@/lib/provider-matching-service";
 
 export async function POST(request: Request) {
   const rateLimitResponse = rateLimitResponseIfNeeded(request, {
@@ -63,7 +68,32 @@ export async function POST(request: Request) {
   try {
     const accessToken = await getValidMicrosoftAccessToken(account);
     const scanResult = await readSignedInMicrosoftMailbox(accessToken, 100);
-    const candidates = detectOutlookSubscriptionCandidates(scanResult.messages);
+    const providers = await loadActiveProviderCatalog();
+    const providerHints = Object.fromEntries(
+      scanResult.messages.flatMap((message) => {
+        const fromAddress = message.from?.emailAddress?.address ?? "";
+        const match = matchProviderContext(
+          {
+            senderName: message.from?.emailAddress?.name ?? null,
+            senderDomain: fromAddress.match(/@([a-z0-9.-]+\.[a-z]{2,})/i)?.[1] ?? null,
+            receiptText: `${message.subject ?? ""} ${message.bodyPreview ?? ""}`,
+          },
+          providers,
+        );
+        return match ? [[message.id, match]] : [];
+      }),
+    );
+    const detectedCandidates = detectOutlookSubscriptionCandidates(scanResult.messages, providerHints);
+    const candidates = await enrichDetectedCandidates(detectedCandidates, {
+      source: "outlook",
+      userId: currentUser.id,
+      contexts: detectedCandidates.map((candidate) => ({
+        providerName: candidate.providerName,
+        senderDomain: candidate.senderDomain,
+        receiptText: candidate.subject,
+      })),
+      providers,
+    });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const scan = await prisma.outlookImportScan.create({
       data: {

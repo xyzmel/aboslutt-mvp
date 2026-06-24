@@ -52,6 +52,12 @@ type SubscriptionForm = {
 };
 
 type SubscriptionFormErrors = Partial<Record<keyof SubscriptionForm, string>>;
+type SubscriptionFormDirty = {
+  category: boolean;
+  billingInterval: boolean;
+  monthlyCost: boolean;
+  nextPayment: boolean;
+};
 type PremiumGateState = {
   title: string;
   description: string;
@@ -78,6 +84,12 @@ const defaultForm: SubscriptionForm = {
   billingInterval: "monthly",
   nextPayment: "",
   note: "",
+};
+const cleanFormDirty: SubscriptionFormDirty = {
+  category: false,
+  billingInterval: false,
+  monthlyCost: false,
+  nextPayment: false,
 };
 
 const categoryOptions: [SubscriptionCategory, string][] = [
@@ -109,8 +121,10 @@ export function DashboardClient() {
   const [lastCancelledCount, setLastCancelledCount] = useState(0);
   const [lastMonthlySavings, setLastMonthlySavings] = useState(0);
   const [form, setForm] = useState<SubscriptionForm>(defaultForm);
+  const [formDirty, setFormDirty] = useState<SubscriptionFormDirty>(cleanFormDirty);
   const [formErrors, setFormErrors] = useState<SubscriptionFormErrors>({});
   const [editForm, setEditForm] = useState<SubscriptionForm>(defaultForm);
+  const [editFormDirty, setEditFormDirty] = useState<SubscriptionFormDirty>(cleanFormDirty);
   const [editFormErrors, setEditFormErrors] = useState<SubscriptionFormErrors>({});
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -326,6 +340,7 @@ export function DashboardClient() {
         billing_interval: subscription.billingInterval ?? "unknown",
       });
       setForm(defaultForm);
+      setFormDirty(cleanFormDirty);
       setFormErrors({});
       showToast({
         title: "Abonnement lagt til",
@@ -408,6 +423,7 @@ export function DashboardClient() {
       nextPayment: normalizeDateInputValue(subscription.nextPayment),
       note: subscription.note ?? "",
     });
+    setEditFormDirty(cleanFormDirty);
   }
 
   async function updateSubscription(event: FormEvent<HTMLFormElement>) {
@@ -579,7 +595,10 @@ export function DashboardClient() {
     <main className="flex min-h-screen flex-col bg-[#F0F4F8] pb-28 text-[#0D1B2A]">
       <AppHeader />
 
-      <section className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7">
+      <section
+        className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-5 lg:py-7"
+        data-testid={!isLoading && !errorMessage ? "dashboard-ready" : undefined}
+      >
         {errorMessage ? (
           <div className="mb-5 rounded-2xl border border-[#F3C3CC] bg-[#F5E6E9] p-4 text-sm text-[#C8102E]">
             <p className="font-semibold">{errorMessage}</p>
@@ -756,7 +775,7 @@ export function DashboardClient() {
                     setForm((current) => ({ ...current, name: value }));
                     setFormErrors((current) => ({ ...current, name: undefined }));
                   }}
-                  onSelect={(provider) => applyProviderSuggestion(provider, setForm)}
+                  onSelect={(provider) => applyProviderSuggestion(provider, setForm, formDirty)}
                   selectedProviderId={form.providerId}
                   value={form.name}
                 />
@@ -766,6 +785,7 @@ export function DashboardClient() {
                   label="Kr/mnd"
                   onChange={(value) => {
                     setForm((current) => ({ ...current, monthlyCost: value }));
+                    setFormDirty((current) => ({ ...current, monthlyCost: true }));
                     setFormErrors((current) => ({ ...current, monthlyCost: undefined }));
                   }}
                   placeholder="149"
@@ -773,12 +793,13 @@ export function DashboardClient() {
                 />
                 <SelectInput
                   label="Kategori"
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    setFormDirty((current) => ({ ...current, category: true }));
                     setForm((current) => ({
                       ...current,
                       category: value as SubscriptionCategory,
-                    }))
-                  }
+                    }));
+                  }}
                   options={[...categoryOptions]}
                   value={form.category}
                 />
@@ -796,18 +817,22 @@ export function DashboardClient() {
                 />
                 <SelectInput
                   label="Intervall"
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    setFormDirty((current) => ({ ...current, billingInterval: true }));
                     setForm((current) => ({
                       ...current,
                       billingInterval: value as BillingInterval,
-                    }))
-                  }
+                    }));
+                  }}
                   options={[...billingIntervalOptions]}
                   value={form.billingInterval}
                 />
                 <DateInput
                   label="Neste trekk"
-                  onChange={(value) => setForm((current) => ({ ...current, nextPayment: value }))}
+                  onChange={(value) => {
+                    setFormDirty((current) => ({ ...current, nextPayment: true }));
+                    setForm((current) => ({ ...current, nextPayment: value }));
+                  }}
                   value={form.nextPayment}
                 />
                 <TextInput
@@ -818,12 +843,13 @@ export function DashboardClient() {
                 />
               </div>
               <LoadingButton
+                aria-label="Legg til abonnement"
                 className="mt-4 bg-[#0D1B2A] hover:bg-[#15283c]"
                 isLoading={isSaving}
                 loadingLabel="Lagrer..."
                 type="submit"
               >
-                Legg til
+                Legg til abonnement
               </LoadingButton>
             </form>
 
@@ -930,6 +956,8 @@ export function DashboardClient() {
           onClose={() => setEditingSubscription(null)}
           onSubmit={updateSubscription}
           setForm={setEditForm}
+          setFormDirty={setEditFormDirty}
+          formDirty={editFormDirty}
         />
       ) : null}
     </main>
@@ -1111,7 +1139,7 @@ function CompletedCancellationsSection({ subscriptions }: { subscriptions: Subsc
   }
 
   return (
-    <section className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]">
+    <section className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#DBE4EE]" data-testid="cancellation-history">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-[#C8102E]">Historikk</p>
@@ -1548,9 +1576,10 @@ function validateSubscriptionForm(form: SubscriptionForm): SubscriptionFormError
 function applyProviderSuggestion(
   provider: ProviderOption | null,
   setForm: Dispatch<SetStateAction<SubscriptionForm>>,
+  dirtyFields: SubscriptionFormDirty = cleanFormDirty,
 ) {
   setForm((current) => {
-    return applyProviderSelectionToDraft(current, provider) as SubscriptionForm;
+    return applyProviderSelectionToDraft(current, provider, dirtyFields) as SubscriptionForm;
   });
 }
 
@@ -1671,6 +1700,8 @@ function SubscriptionEditModal({
   errors,
   form,
   setForm,
+  formDirty,
+  setFormDirty,
   onClose,
   onSubmit,
   isSaving,
@@ -1678,19 +1709,26 @@ function SubscriptionEditModal({
   errors: SubscriptionFormErrors;
   form: SubscriptionForm;
   setForm: Dispatch<SetStateAction<SubscriptionForm>>;
+  formDirty: SubscriptionFormDirty;
+  setFormDirty: Dispatch<SetStateAction<SubscriptionFormDirty>>;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isSaving: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-[#0D1B2A]/50 p-4 sm:items-center sm:justify-center">
+    <div
+      aria-labelledby="edit-subscription-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-end bg-[#0D1B2A]/50 p-4 sm:items-center sm:justify-center"
+      role="dialog"
+    >
       <form
         className="w-full rounded-2xl bg-white p-5 shadow-2xl sm:max-w-2xl"
         onSubmit={onSubmit}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-extrabold tracking-tight">Rediger abonnement</h2>
+            <h2 className="text-xl font-extrabold tracking-tight" id="edit-subscription-title">Rediger abonnement</h2>
             <p className="mt-1 text-sm text-[#5F6F82]">
               Oppdater pris, status, intervall og notater når noe endrer seg.
             </p>
@@ -1708,7 +1746,7 @@ function SubscriptionEditModal({
           <ProviderCombobox
             error={errors.name}
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
-            onSelect={(provider) => applyProviderSuggestion(provider, setForm)}
+            onSelect={(provider) => applyProviderSuggestion(provider, setForm, formDirty)}
             selectedProviderId={form.providerId}
             value={form.name}
           />
@@ -1716,15 +1754,19 @@ function SubscriptionEditModal({
             error={errors.monthlyCost}
             inputMode="numeric"
             label="Kr/mnd"
-            onChange={(value) => setForm((current) => ({ ...current, monthlyCost: value }))}
+            onChange={(value) => {
+              setFormDirty((current) => ({ ...current, monthlyCost: true }));
+              setForm((current) => ({ ...current, monthlyCost: value }));
+            }}
             placeholder="149"
             value={form.monthlyCost}
           />
           <SelectInput
             label="Kategori"
-            onChange={(value) =>
+            onChange={(value) => {
+              setFormDirty((current) => ({ ...current, category: true }));
               setForm((current) => ({ ...current, category: value as SubscriptionCategory }))
-            }
+            }}
             options={[...categoryOptions]}
             value={form.category}
           />
@@ -1738,15 +1780,19 @@ function SubscriptionEditModal({
           />
           <SelectInput
             label="Intervall"
-            onChange={(value) =>
+            onChange={(value) => {
+              setFormDirty((current) => ({ ...current, billingInterval: true }));
               setForm((current) => ({ ...current, billingInterval: value as BillingInterval }))
-            }
+            }}
             options={[...billingIntervalOptions]}
             value={form.billingInterval}
           />
           <DateInput
             label="Neste trekk"
-            onChange={(value) => setForm((current) => ({ ...current, nextPayment: value }))}
+            onChange={(value) => {
+              setFormDirty((current) => ({ ...current, nextPayment: true }));
+              setForm((current) => ({ ...current, nextPayment: value }));
+            }}
             value={form.nextPayment}
           />
           <label className="text-sm font-semibold text-[#4A5568] sm:col-span-2">

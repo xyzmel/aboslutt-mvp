@@ -1,3 +1,5 @@
+import { validateCancellationGuideInput, validateSafeExternalUrl } from "./provider-cancellation-guide.mjs";
+
 const categorySuggestions = {
   streaming: "streaming",
   music_audio: "streaming",
@@ -49,7 +51,7 @@ export function getProviderInitials(name) {
     .join("") || "?";
 }
 
-export function applyProviderSelectionToDraft(draft, provider) {
+export function applyProviderSelectionToDraft(draft, provider, dirtyFields = {}) {
   if (!provider) {
     return { ...draft, providerId: null };
   }
@@ -58,8 +60,12 @@ export function applyProviderSelectionToDraft(draft, provider) {
     ...draft,
     providerId: provider.id,
     name: provider.name,
-    category: provider.suggestedCategory ?? suggestSubscriptionCategory(provider.category),
-    billingInterval: provider.defaultBillingInterval ?? draft.billingInterval,
+    category: dirtyFields.category
+      ? draft.category
+      : provider.suggestedCategory ?? suggestSubscriptionCategory(provider.category),
+    billingInterval: dirtyFields.billingInterval
+      ? draft.billingInterval
+      : provider.defaultBillingInterval ?? draft.billingInterval,
   };
 }
 
@@ -99,6 +105,17 @@ export function validateProviderAdminInput(input) {
   if (defaultBillingInterval && !["monthly", "yearly", "unknown"].includes(defaultBillingInterval)) {
     errors.push("Ugyldig standardintervall.");
   }
+  const guideValidation = validateCancellationGuideInput(input);
+  errors.push(...guideValidation.errors);
+  for (const [label, value] of [
+    ["Nettside", input?.websiteUrl],
+    ["Kontoside", input?.accountManagementUrl],
+    ["Oppsigelseslenke", input?.cancellationUrl],
+  ]) {
+    if (cleanString(value, 500) && !validateSafeExternalUrl(value)) {
+      errors.push(`${label} må være en gyldig http- eller https-lenke.`);
+    }
+  }
 
   return {
     ok: errors.length === 0,
@@ -111,13 +128,14 @@ export function validateProviderAdminInput(input) {
       senderNames: cleanList(input?.senderNames),
       emailDomains: cleanList(input?.emailDomains).map((value) => value.toLowerCase()),
       logoPath: validateLocalLogoPath(input?.logoPath),
-      websiteUrl: validateUrl(input?.websiteUrl),
-      accountManagementUrl: validateUrl(input?.accountManagementUrl),
-      cancellationUrl: validateUrl(input?.cancellationUrl),
+      websiteUrl: validateSafeExternalUrl(input?.websiteUrl),
+      accountManagementUrl: validateSafeExternalUrl(input?.accountManagementUrl),
+      cancellationUrl: validateSafeExternalUrl(input?.cancellationUrl),
       defaultBillingInterval,
       supportedCountries: cleanList(input?.supportedCountries).map((value) => value.toUpperCase()).filter((value) => /^[A-Z]{2}$/.test(value)),
       isActive: input?.isActive !== false,
       lastVerifiedAt: parseDate(input?.lastVerifiedAt),
+      ...guideValidation.value,
     },
   };
 }
@@ -154,17 +172,6 @@ function cleanList(value) {
 function validateLocalLogoPath(value) {
   const path = cleanString(value, 200);
   return /^\/providers\/[a-zA-Z0-9._/-]+$/.test(path) ? path : null;
-}
-
-function validateUrl(value) {
-  const url = cleanString(value, 500);
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function parseDate(value) {

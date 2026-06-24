@@ -65,7 +65,7 @@ test.describe("checkout states and UI stability", () => {
     await login(page, premiumUser);
     await page.goto("/payment/thanks");
     await expect(page.getByRole("heading", { name: "Premium er aktivert" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Gå til oversikt" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Åpne oversikten" })).toBeVisible();
   });
 
   test("dashboard does not flash a false empty state while subscriptions load", async ({ page, freeUser }) => {

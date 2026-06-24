@@ -65,6 +65,7 @@ export async function POST(request: Request) {
   }
 
   const payload = await request.json();
+  const duplicateReviewed = payload.confirmedDuplicateReview === true;
   const requestedProviderId = typeof payload.providerId === "string" ? payload.providerId.trim() : "";
   const selectedProvider = requestedProviderId
     ? await prisma.subscriptionProvider.findFirst({
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
     select: { id: true },
   });
 
-  if (duplicateSubscription) {
+  if (duplicateSubscription && !duplicateReviewed) {
     return NextResponse.json(
       { error: "Dette abonnementet finnes allerede som aktivt abonnement." },
       { status: 409 },

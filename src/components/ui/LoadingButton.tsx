@@ -29,11 +29,11 @@ export function LoadingButton({
       {...props}
     >
       <span className="grid grid-cols-1 grid-rows-1 items-center justify-items-center">
-        <span className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${isLoading ? "opacity-100" : "opacity-0"}`}>
+        <span aria-hidden={!isLoading} className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${isLoading ? "opacity-100" : "opacity-0"}`}>
           <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
           {loadingLabel}
         </span>
-        <span className={`col-start-1 row-start-1 inline-flex items-center ${isLoading ? "opacity-0" : "opacity-100"}`}>
+        <span aria-hidden={isLoading} className={`col-start-1 row-start-1 inline-flex items-center ${isLoading ? "opacity-0" : "opacity-100"}`}>
           {children}
         </span>
       </span>

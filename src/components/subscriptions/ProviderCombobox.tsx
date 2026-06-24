@@ -31,6 +31,7 @@ export function ProviderCombobox({
   const inputId = useId();
   const listId = `${inputId}-listbox`;
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [results, setResults] = useState<ProviderOption[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,10 +76,11 @@ export function ProviderCombobox({
   const optionCount = results.length + (showCustom ? 1 : 0);
 
   function chooseProvider(provider: ProviderOption | null) {
-    onSelect(provider);
     if (provider) onChange(provider.name);
+    onSelect(provider);
     setIsOpen(false);
     setActiveIndex(-1);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -123,6 +125,7 @@ export function ProviderCombobox({
         onKeyDown={handleKeyDown}
         placeholder="Søk eller skriv eget navn"
         role="combobox"
+        ref={inputRef}
         value={value}
       />
       {error ? <span className="mt-1 block text-xs font-bold text-[#C8102E]">{error}</span> : null}
@@ -140,6 +143,7 @@ export function ProviderCombobox({
           ) : null}
           {results.map((provider, index) => (
             <button
+              aria-label={provider.name}
               aria-selected={selectedProviderId === provider.id}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left ${
                 activeIndex === index ? "bg-[#F5E6E9]" : "hover:bg-[#F7F9FC]"

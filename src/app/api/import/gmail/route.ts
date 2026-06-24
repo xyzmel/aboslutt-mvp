@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { isGoogleMailConnectEnabled } from "@/lib/auth-provider-config.mjs";
 import { getCurrentUser } from "@/lib/current-user";
 import {
-  normalizeMerchantKey,
   parseEmailSubscriptionCandidates,
 } from "@/lib/email-subscription-parser";
 import { getValidGoogleAccessToken, GoogleTokenError } from "@/lib/google-tokens";
@@ -10,6 +9,11 @@ import { dedupeImportCandidates, enrichImportCandidate } from "@/lib/import-cand
 import { canUseGmailScan } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { rateLimitResponseIfNeeded } from "@/lib/rate-limit";
+import {
+  enrichDetectedCandidates,
+  loadActiveProviderCatalog,
+  matchProviderContext,
+} from "@/lib/provider-matching-service";
 
 export const runtime = "nodejs";
 
@@ -22,7 +26,7 @@ type GmailMessageList = {
 
 type GmailMessage = {
   snippet?: string;
-  payload?: GmailPayloadPart;
+  payload?: GmailPayloadPart & { headers?: { name?: string; value?: string }[] };
 };
 
 type GmailPayloadPart = {
@@ -114,30 +118,23 @@ export async function POST(request: Request) {
     debugLog("gmail_search_complete", { userId: currentUser.id, messagesFound: messageIds.length });
 
     const fetchedMessages = await fetchGmailMessages(messageIds, accessToken);
-    const parsed = parseMessagesSafely(fetchedMessages.messageTexts);
+    const providers = await loadActiveProviderCatalog();
+    const parsed = parseMessagesSafely(fetchedMessages.messages, providers);
 
-    const existingActiveSubscriptions = await prisma.subscription.findMany({
-      where: {
-        userId: currentUser.id,
-        status: { in: ["active", "trial", "yearly"] },
-      },
-      select: { name: true, normalizedName: true },
-    });
-    const existingMerchantKeys = new Set(
-      existingActiveSubscriptions.map((subscription) =>
-        subscription.normalizedName ?? normalizeMerchantKey(subscription.name),
-      ),
-    );
     const ignoredCandidates = await prisma.ignoredImportCandidate.findMany({
       where: { userId: currentUser.id },
       select: { sourceFingerprint: true },
     });
     const ignoredFingerprints = new Set(ignoredCandidates.map((candidate) => candidate.sourceFingerprint));
-    const candidates = dedupeImportCandidates(
-      parsed.candidates.map((candidate) => enrichImportCandidate(candidate, "gmail")),
-    )
-      .filter((candidate) => candidate.confidenceScore >= 50)
-      .filter((candidate) => !existingMerchantKeys.has(normalizeMerchantKey(candidate.merchantName)));
+    const baseCandidates = parsed.candidates.map((candidate) => enrichImportCandidate(candidate, "gmail"));
+    const matchedCandidates = await enrichDetectedCandidates(baseCandidates, {
+      source: "gmail",
+      userId: currentUser.id,
+      contexts: parsed.contexts,
+      providers,
+    });
+    const candidates = dedupeImportCandidates(matchedCandidates)
+      .filter((candidate) => candidate.confidenceScore >= 50);
     const visibleCandidates = candidates.filter(
       (candidate) => !ignoredFingerprints.has(candidate.sourceFingerprint),
     );
@@ -145,7 +142,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       scannedMessages: messageIds.length,
-      fetchedMessages: fetchedMessages.messageTexts.length,
+      fetchedMessages: fetchedMessages.messages.length,
       skippedMessages: fetchedMessages.warningCount + parsed.warningCount,
       candidates: visibleCandidates,
     });
@@ -221,14 +218,14 @@ async function searchGmail(accessToken: string) {
 
 async function fetchGmailMessages(messageIds: string[], accessToken: string) {
   let warningCount = 0;
-  const messageTexts: string[] = [];
+  const messages: { text: string; senderName: string | null; senderDomain: string | null }[] = [];
 
   await Promise.all(
     messageIds.map(async (messageId) => {
       try {
         const messageUrl = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`);
         messageUrl.searchParams.set("format", "full");
-        messageUrl.searchParams.set("fields", "snippet,payload");
+        messageUrl.searchParams.set("fields", "snippet,payload(headers,body,parts)");
 
         const response = await fetch(messageUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -246,7 +243,12 @@ async function fetchGmailMessages(messageIds: string[], accessToken: string) {
           .trim();
 
         if (messageText) {
-          messageTexts.push(messageText);
+          const fromHeader = message.payload?.headers?.find((header) => header.name?.toLowerCase() === "from")?.value ?? "";
+          messages.push({
+            text: messageText,
+            senderName: extractSenderName(fromHeader),
+            senderDomain: extractSenderDomain(fromHeader),
+          });
         }
       } catch (error) {
         warningCount += 1;
@@ -257,24 +259,57 @@ async function fetchGmailMessages(messageIds: string[], accessToken: string) {
     }),
   );
 
-  return { messageTexts, warningCount };
+  return { messages, warningCount };
 }
 
-function parseMessagesSafely(messageTexts: string[]) {
+function parseMessagesSafely(
+  messages: { text: string; senderName: string | null; senderDomain: string | null }[],
+  providers: Awaited<ReturnType<typeof loadActiveProviderCatalog>>,
+) {
   let warningCount = 0;
-  const candidates = messageTexts.flatMap((messageText) => {
+  const candidates: ReturnType<typeof parseEmailSubscriptionCandidates> = [];
+  const contexts: { providerName: string; senderName: string | null; senderDomain: string | null; receiptText: string }[] = [];
+  for (const message of messages) {
     try {
-      return parseEmailSubscriptionCandidates(messageText);
+      const initialMatch = matchProviderContext(
+        {
+          senderName: message.senderName,
+          senderDomain: message.senderDomain,
+          receiptText: message.text,
+        },
+        providers,
+      );
+      const parsed = parseEmailSubscriptionCandidates(
+        message.text,
+        initialMatch ? { name: initialMatch.canonicalName, category: initialMatch.suggestedCategory } : null,
+      );
+      for (const candidate of parsed) {
+        candidates.push(candidate);
+        contexts.push({
+          providerName: candidate.merchantName,
+          senderName: message.senderName,
+          senderDomain: message.senderDomain,
+          receiptText: message.text,
+        });
+      }
     } catch (error) {
       warningCount += 1;
       debugLog("gmail_message_parse_error", {
         message: error instanceof Error ? error.message : "Ukjent parserfeil",
       });
-      return [];
     }
-  });
+  }
 
-  return { candidates, warningCount };
+  return { candidates, contexts, warningCount };
+}
+
+function extractSenderDomain(fromHeader: string) {
+  return fromHeader.match(/@([a-z0-9.-]+\.[a-z]{2,})/i)?.[1]?.toLowerCase() ?? null;
+}
+
+function extractSenderName(fromHeader: string) {
+  const name = fromHeader.replace(/<[^>]+>/g, "").replace(/["']/g, "").trim();
+  return name && !name.includes("@") ? name.slice(0, 120) : null;
 }
 
 async function createGmailApiError(response: Response, fallbackMessage: string) {

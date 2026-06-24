@@ -28,6 +28,7 @@ type EditedCandidate = {
   billingInterval?: unknown;
   nextPayment?: unknown;
   category?: unknown;
+  providerId?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -134,25 +135,22 @@ export async function POST(request: Request) {
     }
 
     const value = validation.value;
-    const normalizedName = normalizeMerchantName(value.name);
-    const duplicate = await prisma.subscription.findFirst({
-      where: {
-        userId: currentUser.id,
-        status: { in: ["active", "trial", "yearly"] },
-        OR: [{ normalizedName: normalizeMerchantKey(normalizedName) }, { name: { equals: normalizedName } }],
-      },
-      select: { id: true },
-    });
-
-    if (duplicate) {
+    const selectedProvider = value.providerId
+      ? await prisma.subscriptionProvider.findFirst({
+          where: { id: value.providerId, isActive: true },
+          select: { id: true, name: true },
+        })
+      : null;
+    if (value.providerId && !selectedProvider) {
       results.push({
         id: match.stored.id,
         ok: false,
-        error: "DUPLICATE_SUBSCRIPTION",
-        message: "Dette abonnementet finnes allerede.",
+        error: "VALIDATION_ERROR",
+        message: "Valgt leverandør finnes ikke lenger.",
       });
       continue;
     }
+    const normalizedName = normalizeMerchantName(selectedProvider?.name ?? value.name);
 
     const existingSubscriptionCount = await prisma.subscription.count({ where: { userId: currentUser.id } });
     if (!canAddManualSubscription(currentUser, existingSubscriptionCount)) {
@@ -170,6 +168,7 @@ export async function POST(request: Request) {
     const status: SubscriptionStatus = billingInterval === "yearly" ? "yearly" : "active";
     const subscription = await prisma.subscription.create({
       data: {
+        providerId: selectedProvider?.id ?? null,
         name: normalizedName,
         normalizedName: normalizeMerchantKey(normalizedName),
         category: value.category as SubscriptionCategory,
@@ -228,5 +227,6 @@ function normalizeEditedCandidate(candidate: EditedCandidate) {
     billingInterval: typeof candidate.billingInterval === "string" ? candidate.billingInterval : undefined,
     nextPayment: typeof candidate.nextPayment === "string" ? candidate.nextPayment : undefined,
     category: typeof candidate.category === "string" ? candidate.category : undefined,
+    providerId: typeof candidate.providerId === "string" ? candidate.providerId : null,
   };
 }
