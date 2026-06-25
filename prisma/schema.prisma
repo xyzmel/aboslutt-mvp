@@ -335,10 +335,12 @@ model SubscriptionProvider {
 model SubscriptionProviderLogo {
   id          String   @id @default(cuid())
   providerId  String
+  sourceWebsite String?
   sourceUrl   String
   contentType String
   byteSize    Int
-  data        Bytes
+  data        Bytes?
+  blobUrl     String?
   status      String   @default("pending")
   fetchedAt   DateTime @default(now())
   approvedAt  DateTime?
@@ -348,6 +350,7 @@ model SubscriptionProviderLogo {
 
   @@index([status])
   @@index([fetchedAt])
+  @@index([blobUrl])
 }
 
 model UnmatchedProviderSignal {

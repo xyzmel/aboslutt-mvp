@@ -60,6 +60,10 @@ test.describe("subscription provider catalog", () => {
       data: { action: "fetch" },
     });
     expect(logoResponse.status()).toBe(403);
+    const draftLogoResponse = await page.request.post("/api/admin/providers/logo-fetch", {
+      data: { websiteUrl: "https://example.com", slug: "example" },
+    });
+    expect(draftLogoResponse.status()).toBe(403);
     const capabilityResponse = await page.request.patch("/api/admin/subscription-providers/not-allowed", {
       data: {
         name: "Ikke tillatt",

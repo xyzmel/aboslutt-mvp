@@ -3,7 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 
-export const MAX_ICON_BYTES = 1024 * 1024;
+export const MAX_ICON_BYTES = 2 * 1024 * 1024;
 export const MAX_HTML_BYTES = 512 * 1024;
 export const MAX_REDIRECTS = 3;
 export const REQUEST_TIMEOUT_MS = 7000;
@@ -71,6 +71,25 @@ export async function importProviderLogo(websiteUrl, options = {}) {
     : new ProviderLogoImportError("NO_VALID_ICON", "Fant ingen gyldige ikoner.");
 }
 
+export async function fetchProviderLogoSource(sourceUrl, websiteUrl, options = {}) {
+  const website = validatePublicHttpUrl(websiteUrl);
+  const iconUrl = validateRelatedIconUrl(sourceUrl, website.hostname);
+  const request = options.request ?? secureRequest;
+  const icon = await request(iconUrl, {
+    accept: "image/png,image/jpeg,image/webp,image/x-icon",
+    maxBytes: MAX_ICON_BYTES,
+    originalHost: website.hostname,
+    timeoutMs: options.timeoutMs,
+  });
+  const contentType = validateIconResponse(icon.headers["content-type"], icon.body);
+  return {
+    sourceUrl: icon.url.toString(),
+    contentType,
+    byteSize: icon.body.length,
+    data: icon.body,
+  };
+}
+
 export function parseIconCandidates(html, baseUrl) {
   const candidates = [];
   for (const tag of String(html).match(/<link\b[^>]*>/gi) ?? []) {
@@ -80,13 +99,15 @@ export function parseIconCandidates(html, baseUrl) {
     if (!attributes.href) continue;
     try {
       const url = new URL(attributes.href, baseUrl);
-      const size = getIconSize(attributes.sizes, rel.includes("apple-touch-icon"));
-      candidates.push({ url, size, apple: rel.includes("apple-touch-icon") });
+      const apple = rel.includes("apple-touch-icon");
+      const size = getIconSize(attributes.sizes, apple);
+      const declaredType = normalizeContentType(attributes.type);
+      candidates.push({ url, size, apple, declaredType, rank: getCandidateRank(url, declaredType, apple) });
     } catch {
       // Ignore malformed icon references.
     }
   }
-  return candidates.sort((a, b) => b.size - a.size || Number(b.apple) - Number(a.apple));
+  return candidates.sort((a, b) => b.rank - a.rank || b.size - a.size);
 }
 
 export function validatePublicHttpUrl(value) {
@@ -97,7 +118,10 @@ export function validatePublicHttpUrl(value) {
     throw new ProviderLogoImportError("INVALID_URL", "Ugyldig nettadresse.");
   }
   if (!["http:", "https:"].includes(url.protocol)) {
-    throw new ProviderLogoImportError("UNSUPPORTED_PROTOCOL", "Kun HTTP og HTTPS er tillatt.");
+    throw new ProviderLogoImportError("UNSUPPORTED_PROTOCOL", "Kun HTTPS er tillatt.");
+  }
+  if (url.protocol === "http:" && !(process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_PROVIDER_LOGO_FETCH === "true")) {
+    throw new ProviderLogoImportError("UNSAFE_URL", "HTTPS kreves.");
   }
   if (url.username || url.password || !url.hostname) {
     throw new ProviderLogoImportError("INVALID_URL", "Nettadressen kan ikke inneholde innlogging.");
@@ -131,6 +155,15 @@ export function validateIconResponse(contentTypeHeader, body) {
   const detected = detectImageType(body);
   if (!declared || !detected || declared !== detected) {
     throw new ProviderLogoImportError("INVALID_CONTENT_TYPE", "Filen er ikke et støttet bilde.");
+  }
+  const dimensions = getImageDimensions(body, detected);
+  if (dimensions && (
+    dimensions.width < 1 ||
+    dimensions.height < 1 ||
+    dimensions.width > 4096 ||
+    dimensions.height > 4096
+  )) {
+    throw new ProviderLogoImportError("INVALID_DIMENSIONS", "Bildets dimensjoner er ikke tillatt.");
   }
   return detected;
 }
@@ -185,6 +218,9 @@ export async function secureRequest(urlValue, options = {}) {
   }
 
   const addresses = await (options.resolve ?? resolvePublicAddresses)(url.hostname);
+  if (!Array.isArray(addresses) || addresses.length === 0 || addresses.some((entry) => isBlockedAddress(entry.address))) {
+    throw new ProviderLogoImportError("SSRF_BLOCKED", "Domenet peker til en privat eller reservert adresse.");
+  }
   const address = addresses[0];
   const transport = url.protocol === "https:" ? https : http;
   const response = await new Promise((resolve, reject) => {
@@ -258,11 +294,55 @@ function getIconSize(sizes, apple) {
   return largest || (apple ? 180 : 16);
 }
 
+function getCandidateRank(url, declaredType, apple) {
+  const type = supportedTypes.get(declaredType) ?? typeFromPathname(url.pathname);
+  if (apple && ["image/png", "image/webp"].includes(type)) return 500;
+  if (["image/png", "image/webp"].includes(type)) return 400;
+  if (type === "image/x-icon") return 300;
+  if (type === "image/jpeg") return 200;
+  return apple ? 150 : 100;
+}
+
+function typeFromPathname(pathname) {
+  const value = pathname.toLowerCase();
+  if (value.endsWith(".png")) return "image/png";
+  if (value.endsWith(".webp")) return "image/webp";
+  if (value.endsWith(".ico")) return "image/x-icon";
+  if (value.endsWith(".jpg") || value.endsWith(".jpeg")) return "image/jpeg";
+  return null;
+}
+
 function detectImageType(body) {
   if (body.length >= 8 && body.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "image/png";
   if (body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) return "image/jpeg";
   if (body.length >= 12 && body.toString("ascii", 0, 4) === "RIFF" && body.toString("ascii", 8, 12) === "WEBP") return "image/webp";
   if (body.length >= 4 && body[0] === 0 && body[1] === 0 && body[2] === 1 && body[3] === 0) return "image/x-icon";
+  return null;
+}
+
+export function getImageDimensions(body, contentType) {
+  if (contentType === "image/png" && body.length >= 24) {
+    return { width: body.readUInt32BE(16), height: body.readUInt32BE(20) };
+  }
+  if (contentType === "image/x-icon" && body.length >= 8) {
+    return { width: body[6] || 256, height: body[7] || 256 };
+  }
+  if (contentType === "image/jpeg") {
+    let offset = 2;
+    while (offset + 9 < body.length) {
+      if (body[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = body[offset + 1];
+      const length = body.readUInt16BE(offset + 2);
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+        return { width: body.readUInt16BE(offset + 7), height: body.readUInt16BE(offset + 5) };
+      }
+      if (length < 2) break;
+      offset += 2 + length;
+    }
+  }
   return null;
 }
 

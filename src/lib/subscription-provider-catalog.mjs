@@ -127,7 +127,7 @@ export function validateProviderAdminInput(input) {
       aliases: cleanList(input?.aliases),
       senderNames: cleanList(input?.senderNames),
       emailDomains: cleanList(input?.emailDomains).map((value) => value.toLowerCase()),
-      logoPath: validateLocalLogoPath(input?.logoPath),
+      logoPath: validateProviderLogoPath(input?.logoPath),
       websiteUrl: validateSafeExternalUrl(input?.websiteUrl),
       accountManagementUrl: validateSafeExternalUrl(input?.accountManagementUrl),
       cancellationUrl: validateSafeExternalUrl(input?.cancellationUrl),
@@ -169,9 +169,19 @@ function cleanList(value) {
   return [...new Set(list.map((item) => cleanString(item, 120)).filter(Boolean))].slice(0, 50);
 }
 
-function validateLocalLogoPath(value) {
+function validateProviderLogoPath(value) {
   const path = cleanString(value, 200);
-  return /^\/providers\/[a-zA-Z0-9._/-]+$/.test(path) ? path : null;
+  if (/^\/providers\/[a-zA-Z0-9._/-]+$/.test(path)) return path;
+  try {
+    const url = new URL(path);
+    return url.protocol === "https:" &&
+      url.hostname.endsWith(".public.blob.vercel-storage.com") &&
+      url.pathname.startsWith("/providers/")
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseDate(value) {

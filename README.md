@@ -111,7 +111,7 @@ The dashboard provider combobox searches canonical names, aliases, sender names,
 
 Provider logos must be reviewed local files under `public/providers/`. Store paths as `/providers/<file>`. Missing or invalid logo files use an initials fallback.
 
-Administrators can also fetch an icon candidate from a provider's stored `websiteUrl`. Fetching is server-side with DNS/IP validation, pinned public addresses, related-domain redirect checks, response-size limits, timeouts, image signature validation, and no `og:image` fallback. Fetched bytes are quarantined in `SubscriptionProviderLogo`; they are not customer-visible until an administrator approves them. Approved assets are served from the same origin through `/api/provider-logos/[id]`.
+Administrators can fetch an icon candidate from a provider's verified `websiteUrl`. Fetching is server-side with DNS/IP validation, pinned public addresses, related-domain redirect checks, response-size limits, timeouts, image signature validation, and no `og:image` fallback. Candidate metadata is quarantined in `SubscriptionProviderLogo`; approval re-fetches and validates the image before uploading it to public Vercel Blob storage. Configure `BLOB_READ_WRITE_TOKEN` in Vercel. Approved Blob URLs are stored in `SubscriptionProvider.logoPath`, while existing local `/providers/...` assets remain supported and are never deleted by the Blob replacement flow.
 
 Administrators maintain the catalog at `/admin/providers`. Ordinary users cannot create, edit, enable, or disable global providers.
 

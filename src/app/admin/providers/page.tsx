@@ -30,9 +30,11 @@ export default async function AdminProvidersPage() {
           take: 1,
           select: {
             id: true,
+            sourceWebsite: true,
             sourceUrl: true,
             contentType: true,
             byteSize: true,
+            blobUrl: true,
             status: true,
             fetchedAt: true,
             approvedAt: true,
@@ -91,9 +93,11 @@ type ProviderWithCount = Prisma.SubscriptionProviderGetPayload<{
     logoAssets: {
       select: {
         id: true;
+        sourceWebsite: true;
         sourceUrl: true;
         contentType: true;
         byteSize: true;
+        blobUrl: true;
         status: true;
         fetchedAt: true;
         approvedAt: true;
